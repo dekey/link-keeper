@@ -17,8 +17,20 @@ Full behaviour and rules: [SPEC.md](SPEC.md).
 
 ## Install
 
-Link Keeper is not in the Obsidian community plugin list. You build it once and copy two
-files into your vault.
+Link Keeper is not in the Obsidian community plugin list. Install it from a GitHub release
+(no build needed), or build it yourself.
+
+### From a release
+
+1. Open the [Releases](../../releases) page of this repository and download
+   `link-keeper.zip` from the newest release.
+2. Unzip it into `<path-to-your-vault>/.obsidian/plugins/`. You get the folder
+   `link-keeper/` with `main.js` and `manifest.json`.
+3. Turn it on in Obsidian: see step 4 below.
+
+### From source
+
+Do steps 1–3, then step 4.
 
 ### 1. Install Deno
 
@@ -72,8 +84,9 @@ folder there. Finder hides `.obsidian`: press Cmd+Shift+. to show hidden folders
 
 ### Mobile (iPhone, iPad, Android)
 
-You cannot run `make` on the phone. Build on a computer, then get the two files into
-`.obsidian/plugins/link-keeper/` of the same vault on the phone, for example:
+You cannot run `make` on the phone. Download the release zip or build on a computer, then
+get the two files into `.obsidian/plugins/link-keeper/` of the same vault on the phone,
+for example:
 
 - with Obsidian Sync (turn on **Settings → Sync → Installed community plugins**), or
 - with iCloud / a file sync app that syncs the whole vault folder, including `.obsidian`.
@@ -81,6 +94,11 @@ You cannot run `make` on the phone. Build on a computer, then get the two files 
 Then turn the plugin on as in step 4.
 
 ### Update to a new version
+
+From a release: download the new `link-keeper.zip` and unzip it into
+`.obsidian/plugins/` again, replacing the old files.
+
+From source:
 
 ```sh
 git pull
@@ -135,7 +153,8 @@ make test    # build, then run all tests
 make check   # type-check only
 make lint    # lint
 make fmt     # format the code
-make clean   # delete plugin/
+make zip     # build, then pack dist/link-keeper.zip for a release
+make clean   # delete plugin/ and dist/
 ```
 
 | Path | What is in it |
@@ -146,8 +165,33 @@ make clean   # delete plugin/
 | `tests/acceptance_test.ts` | One test per acceptance criterion; runs the built `plugin/main.js` in a fake vault (`tests/fake_obsidian.ts`). |
 | `SPEC.md` | What the plugin does, in detail. |
 | `docs/plan/` | Plans and their status. |
+| `.github/workflows/ci.yml` | Tests on every push and pull request; release on a tag. |
+| `scripts/release.sh` | Creates the GitHub release for a tag, or rewrites it if it exists. |
 
-`plugin/` is build output and is not kept in git.
+`plugin/` and `dist/` are build output and are not kept in git.
+
+### Releases
+
+GitHub Actions lints, builds and tests every push and pull request. Pushing a tag also
+publishes a GitHub release for that tag with `main.js`, `manifest.json` and
+`link-keeper.zip`, but only when the tests pass:
+
+```sh
+git tag 1.0.0
+git push origin 1.0.0
+```
+
+If the tag already has a release, that release is deleted and created again with the new
+files; the tag stays. To publish a fix under the same version, move the tag and push it
+again:
+
+```sh
+git tag -f 1.0.0
+git push -f origin 1.0.0
+```
+
+Obsidian's community plugin list and BRAT expect the tag to be the same as `version` in
+`manifest.json`, without a `v` in front.
 
 ## License
 

@@ -3,8 +3,9 @@
 # Needs Deno (https://deno.com). No Node or npm.
 
 OUT := plugin
+DIST := dist
 
-.PHONY: build check test lint fmt clean
+.PHONY: build check test lint fmt zip clean
 
 # Type-check, bundle src/main.ts into plugin/main.js, copy manifest.json next to it.
 # "obsidian" stays an outside import: Obsidian provides it when the plugin loads.
@@ -26,5 +27,12 @@ lint:
 fmt:
 	deno fmt src/ tests/
 
+# Zip for a GitHub release: unzipping it in <vault>/.obsidian/plugins/ gives link-keeper/.
+zip: build
+	rm -rf $(DIST)
+	mkdir -p $(DIST)/link-keeper
+	cp $(OUT)/main.js $(OUT)/manifest.json $(DIST)/link-keeper/
+	cd $(DIST) && zip -rq link-keeper.zip link-keeper && rm -rf link-keeper
+
 clean:
-	rm -rf $(OUT)
+	rm -rf $(OUT) $(DIST)

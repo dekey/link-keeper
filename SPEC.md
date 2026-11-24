@@ -131,6 +131,8 @@ Three settings live under Settings → Link Keeper. Changes save immediately and
 
 **Source and build:** the code is TypeScript in `src/` (`links.ts` holds the duplicate and line rules with no Obsidian imports, so it is tested on its own). `make build` type-checks it, bundles it into `plugin/main.js` with Deno (no Node or npm) and copies `manifest.json` next to it. `make test` runs the tests in `tests/`. The `plugin/` folder is build output and is not kept in git.
 
+**Releases:** GitHub Actions runs the tests on every push. Pushing a git tag also publishes a GitHub release for that tag with `main.js`, `manifest.json` and `link-keeper.zip` (unzips to `link-keeper/`), only when the tests pass. If the tag already has a release, it is rewritten with the new files; the tag stays.
+
 **Key implementation choices:**
 
 - The check and the write use Obsidian’s `vault.process`, which reads and saves the note in one step, so nothing is lost if the note changes at the same moment.
@@ -139,6 +141,6 @@ Three settings live under Settings → Link Keeper. Changes save immediately and
 
 **Installation:**
 
-1. Run `make build`, then copy the two files from `plugin/` (`main.js`, `manifest.json`) into the vault’s `.obsidian/plugins/link-keeper/` folder (or unzip `link-keeper.zip` there).
+1. Download `link-keeper.zip` from a GitHub release and unzip it into the vault’s `.obsidian/plugins/` folder. Or run `make build` and copy the two files from `plugin/` (`main.js`, `manifest.json`) into the vault’s `.obsidian/plugins/link-keeper/` folder.
 2. Open Settings → Community plugins, turn off Restricted mode if needed, and enable Link Keeper.
 3. Optionally set the target note and a hotkey.
