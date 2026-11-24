@@ -1,0 +1,9 @@
+{
+  "id": "link-keeper",
+  "name": "Link Keeper",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Add a link to a note only if it is not already there. Warns you about duplicates.",
+  "author": "You",
+  "isDesktopOnly": false
+}
