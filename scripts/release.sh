@@ -2,6 +2,8 @@
 # Publishes a GitHub release for TAG with the given files as downloads.
 # If TAG already has a release, that release is deleted and created again,
 # so it always holds the files built from the tag. The git tag itself is kept.
+# Release notes come from docs/releases/TAG.md when that file exists;
+# otherwise GitHub writes them from the commits since the last release.
 #
 # Usage: scripts/release.sh TAG FILE...
 # Needs: gh CLI, GH_TOKEN allowed to write releases (contents: write).
@@ -21,6 +23,13 @@ for file in "$@"; do
   fi
 done
 
+notes_file="$(cd "$(dirname "$0")/.." && pwd)/docs/releases/$tag.md"
+if [ -f "$notes_file" ]; then
+  notes=(--notes-file "$notes_file")
+else
+  notes=(--generate-notes)
+fi
+
 if gh release view "$tag" >/dev/null 2>&1; then
   echo "Release $tag already exists: rewriting it."
   gh release delete "$tag" --yes
@@ -28,7 +37,7 @@ fi
 
 gh release create "$tag" "$@" \
   --title "$tag" \
-  --generate-notes \
+  "${notes[@]}" \
   --verify-tag
 
 echo "Release $tag published with: $*"

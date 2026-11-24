@@ -165,6 +165,7 @@ make clean   # delete plugin/ and dist/
 | `tests/acceptance_test.ts` | One test per acceptance criterion; runs the built `plugin/main.js` in a fake vault (`tests/fake_obsidian.ts`). |
 | `SPEC.md` | What the plugin does, in detail. |
 | `docs/plan/` | Plans and their status. |
+| `docs/releases/` | Release notes, one file per tag. |
 | `.github/workflows/ci.yml` | Tests on every push and pull request; release on a tag. |
 | `scripts/release.sh` | Creates the GitHub release for a tag, or rewrites it if it exists. |
 
@@ -180,6 +181,10 @@ publishes a GitHub release for that tag with `main.js`, `manifest.json` and
 git tag 1.0.0
 git push origin 1.0.0
 ```
+
+Release notes come from `docs/releases/<tag>.md` (e.g. `docs/releases/1.0.0.md`) when that
+file exists; otherwise GitHub writes them from the commits. Keep notes in that file, not
+only on GitHub: a rewrite replaces the release.
 
 If the tag already has a release, that release is deleted and created again with the new
 files; the tag stays. To publish a fix under the same version, move the tag and push it
