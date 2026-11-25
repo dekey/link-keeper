@@ -5,6 +5,10 @@ Obsidian plugin "Link Keeper": adds a link to a note only if the note does not h
 - `SPEC.md` is the behaviour contract (commands, duplicate rules, append rules, pop-up texts, edge cases). Change it together with any behaviour change.
 - `README.md` is the user guide (install, use, settings, development, releases).
 
+## Important
+
+- NEVER COMMIT WITHOUT MY APPROVAL!
+
 ## Commands
 
 ```sh
