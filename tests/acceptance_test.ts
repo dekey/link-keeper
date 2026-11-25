@@ -1,12 +1,14 @@
-// One test per acceptance criterion in docs/plan/done/v0.1.md, run against the built
-// plugin/main.js inside a fake vault (see fake_obsidian.ts).
+// One test per acceptance criterion in docs/plan/done/v0.1.md, plus the "Sort links in current
+// note" command (SPEC.md, "Sorting links"), run against the built plugin/main.js inside
+// a fake vault (see fake_obsidian.ts).
 
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertInstanceOf } from "@std/assert";
 import { Harness } from "./fake_obsidian.ts";
 
 const TO_TARGET = "add-link-to-target-note";
 const TO_CURRENT = "add-link-to-current-note";
 const SELECTION = "add-selection-to-target-note";
+const SORT = "sort-links-in-current-note";
 
 Deno.test("AC1: with no Links.md, adding a link creates the note with that link", async () => {
   const vault = await Harness.start();
@@ -194,4 +196,187 @@ Deno.test("'Add link to current note' is hidden for a canvas, so the canvas file
   });
 
   assertEquals(vault.isAvailable(TO_CURRENT), false);
+});
+
+// "Sort links in current note": the note open in the editor (SPEC.md, "Sorting links").
+
+// The SPEC Before/After example: keys zeta, 2-intro, alpha.
+const BEFORE = "# Reading\n" +
+  "- https://b.com/zeta\n" +
+  "Some text\n" +
+  "- https://a.com/2-intro\n" +
+  "- [Alpha](https://c.com/docs/alpha/)\n";
+const AFTER = "# Reading\n" +
+  "- https://a.com/2-intro\n" +
+  "Some text\n" +
+  "- [Alpha](https://c.com/docs/alpha/)\n" +
+  "- https://b.com/zeta\n";
+
+/** The editor changes that turn BEFORE into AFTER: lines 1, 3 and 4 change, the others stay. */
+const SORT_CHANGES = [
+  { from: { line: 1, ch: 0 }, to: { line: 1, ch: 20 }, text: "- https://a.com/2-intro" },
+  {
+    from: { line: 3, ch: 0 },
+    to: { line: 3, ch: 23 },
+    text: "- [Alpha](https://c.com/docs/alpha/)",
+  },
+  { from: { line: 4, ch: 0 }, to: { line: 4, ch: 36 }, text: "- https://b.com/zeta" },
+];
+
+/** The one editor step of a sort: the changes, named by the plugin so undo keeps it apart. */
+const SORT_STEP = { changes: SORT_CHANGES, origin: "link-keeper.sort" };
+
+/** Runs `run` with console.error replaced, and returns the arguments of every call. */
+async function withConsoleErrors<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; errors: unknown[][] }> {
+  const errors: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args);
+  };
+  try {
+    return { result: await run(), errors };
+  } finally {
+    console.error = original;
+  }
+}
+
+Deno.test("sorting puts the link lines of the editor text in order in one editor step that changes only the moved lines, unsaved edits included, and says how many links were sorted", async () => {
+  // The saved note is older than the editor text: the sort must use the editor text.
+  const saved = "# Reading\n- https://b.com/zeta\n- https://a.com/alpha\n";
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": saved } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE);
+
+  assertEquals(editor.getValue(), AFTER);
+  assertEquals(editor.transactions, [SORT_STEP]);
+  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+});
+
+Deno.test("the sort pop-up counts every link line, also the ones that did not move", async () => {
+  const text = "- https://x.com/zeta\n- https://x.com/beta\n- https://x.com/alpha\n";
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": text } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", text);
+
+  assertEquals(
+    editor.getValue(),
+    "- https://x.com/alpha\n- https://x.com/beta\n- https://x.com/zeta\n",
+  );
+  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+});
+
+Deno.test("after sorting, the cursor is back on the same line and character, also on a line that changed", async () => {
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": BEFORE } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE, {
+    cursor: { line: 1, ch: 3 },
+  });
+
+  assertEquals(editor.transactions, [SORT_STEP]);
+  assertEquals(editor.getCursor(), { line: 1, ch: 3 });
+});
+
+Deno.test("a cursor at the end of a link line that gets a shorter line stays on that line, at its end", async () => {
+  const text = "- https://x.com/zeta-long-name\n- https://x.com/alpha\nSome text\n";
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": text } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", text, {
+    cursor: { line: 0, ch: 30 },
+  });
+
+  assertEquals(
+    editor.getValue(),
+    "- https://x.com/alpha\n- https://x.com/zeta-long-name\nSome text\n",
+  );
+  assertEquals(editor.getCursor(), { line: 0, ch: 21 });
+});
+
+Deno.test("a cursor past the new end of a shortened link line is moved back to its end, so the sort does not fail", async () => {
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": BEFORE } });
+
+  // Line 4 is "- [Alpha](https://c.com/docs/alpha/)" (36 characters); after the sort it is
+  // "- https://b.com/zeta" (20 characters), and the place 36 is past the end of the note.
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE, {
+    cursor: { line: 4, ch: 36 },
+  });
+
+  assertEquals(editor.getValue(), AFTER);
+  assertEquals(editor.getCursor(), { line: 4, ch: 20 });
+  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+});
+
+Deno.test("sorting changes only the editor text, never the vault notes", async () => {
+  const links = "- https://b.com/zeta\n- https://a.com/alpha\n";
+  const vault = await Harness.start({ notes: { "Links.md": links, "Daily/Reading.md": BEFORE } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE);
+
+  assertEquals(editor.getValue(), AFTER);
+  assertEquals(vault.note("Daily/Reading.md"), BEFORE);
+  assertEquals(vault.note("Links.md"), links);
+});
+
+Deno.test("an already sorted note is not rewritten and the pop-up says the links are in order", async () => {
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": AFTER } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", AFTER, {
+    cursor: { line: 2, ch: 3 },
+  });
+
+  assertEquals(editor.transactions, []);
+  assertEquals(editor.getValue(), AFTER);
+  assertEquals(editor.getCursor(), { line: 2, ch: 3 });
+  assertEquals(vault.notices, [
+    { message: "Links in “Reading” are already in order", duration: 4000 },
+  ]);
+});
+
+Deno.test("a note with no links is not rewritten and gets the 'already in order' pop-up", async () => {
+  const text = "# Reading\nSome text\n";
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": text } });
+
+  const editor = await vault.runInEditor(SORT, "Daily/Reading.md", text);
+
+  assertEquals(editor.transactions, []);
+  assertEquals(editor.getValue(), text);
+  assertEquals(vault.notices, [
+    { message: "Links in “Reading” are already in order", duration: 4000 },
+  ]);
+});
+
+Deno.test("'Sort links in current note' is hidden when the editor has no file", async () => {
+  const vault = await Harness.start();
+
+  assertEquals(vault.isAvailable(SORT), false);
+});
+
+Deno.test("'Sort links in current note' is hidden for a canvas", async () => {
+  const vault = await Harness.start({
+    notes: { "Board.canvas": '{"nodes":[],"edges":[]}' },
+    activeFile: "Board.canvas",
+  });
+
+  assertEquals(vault.isAvailable(SORT), false);
+});
+
+Deno.test("when the editor cannot be written, an error pop-up points to the console and the error is logged", async () => {
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": BEFORE } });
+
+  const { result: editor, errors } = await withConsoleErrors(() =>
+    vault.runInEditor(SORT, "Daily/Reading.md", BEFORE, { failOnWrite: true })
+  );
+
+  assertEquals(editor.transactions, [SORT_STEP]);
+  assertEquals(vault.notices, [
+    {
+      message: "Link Keeper: could not sort the links — see the developer console.",
+      duration: undefined,
+    },
+  ]);
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0][0], "Link Keeper:");
+  assertInstanceOf(errors[0][1], Error);
+  assertEquals(errors[0][1].message, "editor write failed");
 });
