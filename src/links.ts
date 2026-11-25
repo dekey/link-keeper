@@ -6,10 +6,12 @@ export const DEFAULT_LINE_FORMAT = "- {link}";
 // A web address runs from http(s):// to the next space, quote or bracket.
 // One level of round brackets inside it is kept, so ".../wiki/Foo_(bar)" stays whole,
 // while the closing bracket of "[title](https://…)" or "(see https://…)" is left out.
-const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/gi;
+// It has the `g` flag, so it remembers its last position: read it only with `match` or
+// `matchAll`, never with `exec` or `test`, or the next text is searched from the wrong place.
+export const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/gi;
 
 // Punctuation stuck to the end of a link in a sentence.
-const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+export const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 /**
  * Makes "https://www.Site.com/page/" and "http://site.com/page" the same string.
@@ -71,7 +73,10 @@ export function addLinkToContent(content: string, link: string, format: string):
   return { content: appendLine(content, formatLine(format, link)), added: true };
 }
 
-/** Only Markdown notes take new lines; text appended to a canvas, PDF or image breaks the file. */
+/**
+ * Only Markdown notes are changed by the plugin (adding or sorting links); changing a canvas,
+ * PDF or image as text breaks the file.
+ */
 export function isMarkdownNote(extension: string): boolean {
   return extension === "md";
 }
