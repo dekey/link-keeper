@@ -10,6 +10,10 @@ the same link twice.
 - Finds a link anywhere in the note: in a list, in a sentence, or inside `[title](url)`.
 - `http`/`https`, `www.`, capital letters in the domain and a trailing `/` do not make a
   link "new".
+- **Sort links in current note** sorts each block of link lines in the open note (0–9, then
+  a–z, by the last part of the link); other lines stay. A link line holds one web link and
+  nothing else (a list marker and a task box in front are fine); a block is link lines right
+  under each other. Note links and `[title](url)` lines are not sorted.
 - Desktop and mobile, Obsidian 1.4.0 or newer (`minAppVersion` in `manifest.json`).
 - No network access; nothing leaves your vault.
 
@@ -124,6 +128,7 @@ left ribbon.
 | Add link to target note | Asks for a link and adds it to the target note (default `Links.md`). |
 | Add link to current note | Same, but checks and writes the note that is open now. Hidden when no Markdown note is open. |
 | Add selected link to target note | Adds the text selected in the editor. Hidden when nothing is selected. |
+| Sort links in current note | Sorts each block of link lines in the open note (0–9, then a–z, by the last part of the link); other lines stay. Ctrl/Cmd+Z undoes it. Hidden when no Markdown note is open in the editor. |
 
 You can give each command a hotkey in **Settings → Hotkeys**.
 
@@ -134,6 +139,12 @@ A new link goes on its own line at the end of the note. A pop-up tells you the r
 
 - ✅ Added to “Links” — the link was new and is now at the end of the note.
 - ⚠️ Already in “Links” — the link was there already; the note is not changed.
+
+After **Sort links in current note** a pop-up tells you:
+
+- ✅ Sorted *n* links in “Note” — the links in each block are now in order; *n* counts all
+  link lines in the note.
+- Links in “Note” are already in order — nothing moved; the note is not changed.
 
 ## Settings
 
@@ -160,35 +171,47 @@ make clean   # delete plugin/ and dist/
 | Path | What is in it |
 | --- | --- |
 | `src/links.ts` | The duplicate and line rules. No Obsidian imports, so it is tested on its own. |
+| `src/sort.ts` | The sort rules: which lines move, sort key and order. No Obsidian imports either. |
 | `src/main.ts`, `src/modal.ts`, `src/settings.ts` | Commands, dialog and settings tab. |
-| `tests/links_test.ts` | Tests for the rules. |
+| `tests/links_test.ts`, `tests/sort_test.ts` | Tests for the duplicate and line rules and for the sort rules. |
 | `tests/acceptance_test.ts` | One test per acceptance criterion; runs the built `plugin/main.js` in a fake vault (`tests/fake_obsidian.ts`). |
 | `SPEC.md` | What the plugin does, in detail. |
 | `docs/plan/` | Plans and their status. |
 | `docs/releases/` | Release notes, one file per tag. |
-| `.github/workflows/ci.yml` | Tests on every push and pull request; release on a tag. |
-| `scripts/release.sh` | Creates the GitHub release for a tag, or rewrites it if it exists. |
+| `.github/workflows/ci.yml` | Lint, build and tests on every push to `main` and every pull request. |
+| `scripts/release.sh` | Checks the tag, builds and tests, then creates the GitHub release for the tag, or replaces its files if it exists. |
 
 `plugin/` and `dist/` are build output and are not kept in git.
 
 ### Releases
 
-GitHub Actions lints, builds and tests every push and pull request. Pushing a tag also
-publishes a GitHub release for that tag with `main.js`, `manifest.json` and
-`link-keeper.zip`, but only when the tests pass:
+GitHub Actions does not publish releases. Make one by hand with the
+[GitHub CLI](https://cli.github.com) (`gh`, logged in). Push the tag first, then run the
+script from the tagged commit:
 
 ```sh
 git tag 1.0.0
 git push origin 1.0.0
+scripts/release.sh 1.0.0
 ```
 
-Release notes come from `docs/releases/<tag>.md` (e.g. `docs/releases/1.0.0.md`) when that
-file exists; otherwise GitHub writes them from the commits. Keep notes in that file, not
-only on GitHub: a rewrite replaces the release.
+`scripts/release.sh` first checks that the tag is the `version` in `manifest.json`, that your
+Deno is the version CI uses (`deno-version` in `.github/workflows/ci.yml`), that the
+checked-out commit is the tag, that there are no uncommitted or untracked files, that the tag
+on GitHub is the same commit, and that `gh` can see the repository and the release. All `gh`
+calls go to the GitHub repository of `origin` (an https or SSH URL, an SSH host alias for
+github.com, or an `insteadOf` short name). Then it runs `make test zip` itself and uploads `main.js`,
+`manifest.json` and `link-keeper.zip`. A failed check or test stops it before anything is
+published, so a release always holds files built and tested from the tagged code.
 
-If the tag already has a release, that release is deleted and created again with the new
-files; the tag stays. To publish a fix under the same version, move the tag and push it
-again:
+Release notes come from `docs/releases/<tag>.md` (e.g. `docs/releases/1.0.0.md`) when that
+file exists; otherwise GitHub writes them from the commits when the release is created. Keep
+notes in that file, not only on GitHub: a re-run puts that file's text into the release.
+
+If the tag already has a release, `scripts/release.sh` replaces its three files (and its
+notes, when the notes file exists). It does not delete the release first, so if an upload
+fails, the release is still there and running the script again finishes it. The tag stays.
+To publish a fix under the same version, move the tag, push it again and run the steps above:
 
 ```sh
 git tag -f 1.0.0
@@ -196,7 +219,7 @@ git push -f origin 1.0.0
 ```
 
 Obsidian's community plugin list and BRAT expect the tag to be the same as `version` in
-`manifest.json`, without a `v` in front.
+`manifest.json`, without a `v` in front; `scripts/release.sh` stops when they differ.
 
 ## License
 

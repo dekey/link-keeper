@@ -11,8 +11,102 @@ export interface NoticeRecord {
   duration: number | undefined;
 }
 
-interface FakeEditor {
-  getSelection(): string;
+/** A place in the editor: line and character, both counted from 0. */
+export interface EditorPosition {
+  line: number;
+  ch: number;
+}
+
+export interface EditorOptions {
+  /** Where the cursor is before the command runs. Default: start of the note. */
+  cursor?: EditorPosition;
+  /** When true, transaction throws, so the error path can be tested. */
+  failOnWrite?: boolean;
+}
+
+export interface EditorChange {
+  from: EditorPosition;
+  to?: EditorPosition;
+  text: string;
+}
+
+export class FakeEditor {
+  /** Every transaction, in order. */
+  readonly transactions: { changes: EditorChange[]; origin: string | undefined }[] = [];
+  private text: string;
+  private cursor: EditorPosition;
+  private readonly selection: string;
+  private readonly failOnWrite: boolean;
+
+  constructor(text: string, selection = "", options: EditorOptions = {}) {
+    this.text = text;
+    this.selection = selection;
+    this.cursor = { ...(options.cursor ?? { line: 0, ch: 0 }) };
+    this.failOnWrite = options.failOnWrite ?? false;
+  }
+
+  getSelection(): string {
+    return this.selection;
+  }
+
+  getValue(): string {
+    return this.text;
+  }
+
+  /** Positions refer to the text before. A cursor on a changed line goes to ch 0. */
+  transaction(tx: { changes?: EditorChange[] }, origin?: string): void {
+    const changes = tx.changes ?? [];
+    this.transactions.push({ changes, origin });
+    if (this.failOnWrite) throw new Error("editor write failed");
+    const ranges = changes.map((change) => ({
+      from: this.offset(change.from),
+      to: this.offset(change.to ?? change.from),
+      text: change.text,
+    }));
+    // Backwards, so a change does not shift the ones before it.
+    ranges.sort((a, b) => b.from - a.from);
+    for (const { from, to, text } of ranges) {
+      this.text = this.text.slice(0, from) + text + this.text.slice(to);
+    }
+    if (changes.some((change) => change.from.line === this.cursor.line)) {
+      this.cursor = { line: this.cursor.line, ch: 0 };
+    }
+  }
+
+  private offset(position: EditorPosition): number {
+    const lines = this.text.split("\n");
+    let offset = position.ch;
+    for (let i = 0; i < position.line; i++) offset += lines[i].length + 1;
+    return offset;
+  }
+
+  /** The text of one line, without its line break. */
+  getLine(line: number): string {
+    return this.text.split("\n")[line] ?? "";
+  }
+
+  getCursor(): EditorPosition {
+    return { ...this.cursor };
+  }
+
+  /** Like Obsidian, `ch` is not stopped at the line end; past the note end it throws. */
+  setCursor(target: EditorPosition): void {
+    const lines = this.text.split("\n");
+    let offset = target.ch;
+    for (let i = 0; i < target.line; i++) offset += lines[i].length + 1;
+    if (offset > this.text.length) throw new RangeError("Selection points outside of document");
+    let line = 0;
+    while (offset > lines[line].length) {
+      offset -= lines[line].length + 1;
+      line++;
+    }
+    this.cursor = { line, ch: offset };
+  }
+}
+
+/** What Obsidian passes to an editor command as `ctx`; only `file` is used here. */
+interface EditorContext {
+  file: FakeFile | null;
 }
 
 interface Command {
@@ -20,7 +114,11 @@ interface Command {
   name: string;
   callback?: () => unknown;
   checkCallback?: (checking: boolean) => boolean | void;
-  editorCheckCallback?: (checking: boolean, editor: FakeEditor) => boolean | void;
+  editorCheckCallback?: (
+    checking: boolean,
+    editor: FakeEditor,
+    ctx: EditorContext,
+  ) => boolean | void;
 }
 
 type KeyListener = (event: { key: string; preventDefault(): void }) => void;
@@ -354,8 +452,27 @@ export class Harness {
   async runWithSelection(commandId: string, selection: string): Promise<void> {
     const command = this.command(commandId);
     if (!command.editorCheckCallback) throw new Error(`${commandId} is not an editor command`);
-    command.editorCheckCallback(false, { getSelection: () => selection });
+    command.editorCheckCallback(false, new FakeEditor("", selection), { file: this.activeFile });
     await settle();
+  }
+
+  /** Runs an editor command on `text` if it shows for `path`; returns the editor. */
+  async runInEditor(
+    commandId: string,
+    path: string,
+    text: string,
+    options: EditorOptions = {},
+  ): Promise<FakeEditor> {
+    const command = this.command(commandId);
+    if (!command.editorCheckCallback) throw new Error(`${commandId} is not an editor command`);
+    const editor = new FakeEditor(text, "", options);
+    const ctx = { file: this.vault.fileFor(path) };
+    if (command.editorCheckCallback(true, editor, ctx) !== true) {
+      throw new Error(`${commandId} is hidden for "${path}"`);
+    }
+    command.editorCheckCallback(false, editor, ctx);
+    await settle();
+    return editor;
   }
 
   /** Whether the command shows in the palette right now. */
@@ -364,7 +481,8 @@ export class Harness {
     if (command.callback) return true;
     if (command.checkCallback) return command.checkCallback(true) === true;
     if (command.editorCheckCallback) {
-      return command.editorCheckCallback(true, { getSelection: () => selection }) === true;
+      const editor = new FakeEditor("", selection);
+      return command.editorCheckCallback(true, editor, { file: this.activeFile }) === true;
     }
     return false;
   }

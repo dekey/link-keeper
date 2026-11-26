@@ -6,7 +6,11 @@ export const DEFAULT_LINE_FORMAT = "- {link}";
 // A web address runs from http(s):// to the next space, quote or bracket.
 // One level of round brackets inside it is kept, so ".../wiki/Foo_(bar)" stays whole,
 // while the closing bracket of "[title](https://…)" or "(see https://…)" is left out.
-const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/gi;
+// No `g` flag, so it keeps no position and any code can share it.
+export const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/i;
+
+// With `g`, for `match` only: finds every link.
+const ALL_URLS_RE = new RegExp(URL_RE.source, URL_RE.flags + "g");
 
 // Punctuation stuck to the end of a link in a sentence.
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
@@ -38,7 +42,7 @@ export function containsLink(content: string, link: string): boolean {
   const trimmed = link.trim();
   if (isUrl(trimmed)) {
     const target = normalizeUrl(trimmed);
-    const found = content.match(URL_RE) ?? [];
+    const found = content.match(ALL_URLS_RE) ?? [];
     return found.some((url) => normalizeUrl(url) === target);
   }
   // Wiki links ([[Note]]) or any other text: plain match, ignoring capital letters.
@@ -71,7 +75,7 @@ export function addLinkToContent(content: string, link: string, format: string):
   return { content: appendLine(content, formatLine(format, link)), added: true };
 }
 
-/** Only Markdown notes take new lines; text appended to a canvas, PDF or image breaks the file. */
+/** Only Markdown notes are changed: a canvas, PDF or image would break as text. */
 export function isMarkdownNote(extension: string): boolean {
   return extension === "md";
 }

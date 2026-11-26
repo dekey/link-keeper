@@ -11,6 +11,7 @@ Link Keeper is an Obsidian plugin that adds a link to a note only if that note d
 - One configurable target note collects links (default `Links.md`).
 - The same check can run against the currently open note.
 - Works with web links (`https://…`) and Obsidian note links (`[[Note]]`).
+- A separate command sorts each block of link lines in the open note (see “Sorting links”).
 - Works on desktop and mobile Obsidian, version 1.4.0 or newer.
 
 ## How it works
@@ -34,13 +35,14 @@ Every add follows the same five steps:
 
 ## Commands and entry points
 
-The user starts the flow from one of three commands (Command palette, Ctrl/Cmd+P) or from a sidebar icon. Each command can be given a hotkey in Settings → Hotkeys.
+The plugin has four commands (Command palette, Ctrl/Cmd+P) and a sidebar icon. Three commands and the icon start the add flow above; “Sort links in current note” sorts each block of link lines in the open note (see “Sorting links” below). Each command can be given a hotkey in Settings → Hotkeys.
 
 | Entry point | Where the link comes from | Note it checks and writes to | Available when |
 | --- | --- | --- | --- |
 | Add link to target note | Typed or pasted into a dialog | Target note from settings | Always |
 | Add link to current note | Typed or pasted into a dialog | The note open right now | A Markdown note is open |
 | Add selected link to target note | Text selected in the editor | Target note from settings | Text is selected |
+| Sort links in current note | No link is given: it sorts each block of link lines already in the note | The note open in the editor | A Markdown note is open in the editor |
 | Ribbon icon (link symbol) | Typed or pasted into a dialog | Target note from settings | Always |
 
 **The dialog:**
@@ -99,6 +101,105 @@ A new link always goes on its own line at the very end of the note. Nothing else
 | Link already in the note | ⚠️ Already in “Links”: *link* | 6 seconds | No |
 | Something failed | Link Keeper: could not add the link — see the developer console. | Default | No |
 
+## Sorting links
+
+“Sort links in current note” reads the note open in the editor from top to bottom and sorts each block of link lines on its own. Every other line stays where it is. It is a separate command: adding a link never sorts, and a new link still goes at the end of the note.
+
+**Rules**
+
+1. **Link line:** a line with one web link and nothing else. In this order:
+   - optional spaces or tabs;
+   - an optional list marker (`-`, `*`, `+`, or a number with `.` or `)`), then one or more spaces or tabs;
+   - only after a list marker: an optional task box (`[ ]`, `[x]`, `[X]`), then one or more spaces or tabs;
+   - exactly one web link (`http://` or `https://`; capital letters count, as in `HTTPS://`);
+   - nothing else, apart from spaces or tabs at the end.
+
+   | Line | Link line? |
+   | --- | --- |
+   | `https://github.com/dekey/link-keeper` | yes |
+   | `- https://github.com/dekey/link-keeper/pull/2` | yes |
+   | `12. https://a.com/x` | yes |
+   | `+ https://a.com/x` | yes |
+   | a tab, then `- [ ]  https://a.com/x` | yes (indent, task box, two spaces) |
+   | `- [X] https://a.com/x` | yes |
+   | `-   https://a.com/x` | yes (several spaces after the marker) |
+   | `-`, a tab, then `https://a.com/x` | yes (a tab after the marker) |
+   | `HTTPS://A.COM/x` | yes (capital letters) |
+   | `-https://a.com/x` | no (no space after the marker) |
+   | `*https://a.com/x*` | no (no space after the `*`: italic text) |
+   | `- [ ]https://a.com/x` | no (no space after the task box) |
+   | `See https://a.com/x` | no (text before) |
+   | `- https://a.com/x nice` | no (text after) |
+   | `- https://a.com/x https://b.com/y` | no (two links) |
+   | `- [title](https://a.com/x)` | no (Markdown link) |
+   | `- [[Note]]` | no (note link) |
+   | `> https://a.com/x`, `# https://a.com/x` | no (quote, heading) |
+   | `- 2. https://a.com/x` | no (two list markers) |
+   | `[ ] https://a.com/x` | no (task box without a list marker) |
+   | `- [-] https://a.com/x` | no (only `[ ]`, `[x]`, `[X]` count as a task box) |
+   | `- <https://a.com/x>` | no (link in angle brackets) |
+
+2. **Block:** one or more link lines right under each other. Any other line ends a block: a blank line, text, a heading, a line with a link and text. A block also ends where a line with a list marker follows a line without one, or the other way round (`https://a.com/z` then `- https://a.com/a` are two blocks). So a task box never lands on a line without a list marker.
+3. **Sort:** each block on its own, by the sort key of its link (see “Sort key” and “Order” below). Lines with the same key keep their old order, so sorting a second time changes nothing.
+4. **What moves:** each place keeps its start (the spaces or tabs and the list marker with the spaces after it) and its end (spaces or tabs at the line end, so a line break made with two spaces stays on its line). Only the task box and the link move. So a numbered list keeps its numbers 1, 2, 3, a bullet stays a bullet, each indent stays, and a task box moves with its link. Each line keeps its own line break, so Windows line breaks (CRLF) and a missing line break at the end stay as they were; an invisible byte order mark stays at the very start. The sort does not remove duplicates and does not change the text that moves.
+5. **Never touched:**
+   - the frontmatter, as Obsidian reads it: a `---` first line up to the next line that is exactly `---` (a `...` line does not end it). A `---` first line with no closing `---` is not frontmatter: it is a normal line, and the link lines below it are sorted;
+   - fenced code blocks: from a line that starts with 3 or more `` ` `` or `~` (after optional spaces or tabs and list markers, as in ```` - ``` ```` and ```` - 1. ``` ````) to a line with only the same character, at least as many (spaces or tabs before or after them are fine; other blank-looking characters, such as a no-break space, are not). A backtick fence has no backtick after it on the same line, so ```` ```a``` text ```` is inline code, not a fence. A code block that is never closed runs to the end of the note.
+
+   Lines inside them are not link lines and end a block.
+6. **Count:** *n* in “✅ Sorted *n* links” is the number of all link lines in the note: also blocks of one line and lines that did not move.
+
+**Example**
+
+| Before | After |
+| --- | --- |
+| `# Reading` | `# Reading` |
+| `- https://b.com/zeta` | `- https://a.com/2-intro` |
+| `- https://a.com/2-intro` | `- https://b.com/zeta` |
+| `Some text` | `Some text` |
+| `1. https://github.com/dekey/link-keeper` | `1. [ ] https://github.com/dekey/link-keeper/pull/2` |
+| `2. [ ] https://github.com/dekey/link-keeper/pull/2` | `2. https://github.com/dekey/link-keeper` |
+
+`Some text` splits the note into two blocks, and each is sorted on its own. The numbers 1 and 2 stay; the task box moves with its link. The key `2` comes before `link-keeper`. The pop-up says “✅ Sorted 4 links”.
+
+**Sort key**
+
+The key is the text after the last `/` of the link, without the query (`?…`) and the anchor (`#…`), and then without the slashes and punctuation (`. , ; : !`) at its end, so `https://a.com/docs.?x=1` is sorted by `docs`. `%` codes are turned back into letters. If the key has a broken one (as in `100%`), no code in it is turned back: the key stays as it is. A link with no path is sorted by its domain, `www.` included.
+
+| Link | Sorted by |
+| --- | --- |
+| `https://github.com/dekey/link-keeper/pull/2` | `2` |
+| `https://github.com/dekey/link-keeper` | `link-keeper` |
+| `https://a.com/docs/page?id=2` | `page` |
+| `https://a.com/docs/` | `docs` |
+| `https://www.a.com/` | `www.a.com` |
+| `https://en.wikipedia.org/wiki/Mercury_(planet)` | `Mercury_(planet)` |
+| `https://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0` | `Москва` |
+
+**Order**
+
+Punctuation first, then digits, then letters. Numbers are compared by value, so `2-tips` comes before `10-tips`. Capital letters and accents do not count (`alpha` = `Alpha`, `éclair` = `eclair`). Other scripts, like Cyrillic, come after Latin letters.
+
+**Writing and messages**
+
+The command changes only the lines that change, in one step through the open editor (Obsidian saves it as usual), so Ctrl/Cmd+Z undoes the whole sort at once and the rest of the note (folded sections) is not touched. The sort is its own undo step: Ctrl/Cmd+Z right after it undoes only the sort, not typing done just before it. It writes only when the order changes. The cursor stays on the same line number; that line may now hold another link, and when that line is shorter the cursor goes to its end. A selection is not kept: only the cursor comes back. After the sort the editor scrolls to the cursor, as Obsidian does for every editor change.
+
+| Situation | Message | Shown for | Note changed? |
+| --- | --- | --- | --- |
+| Lines moved | ✅ Sorted *n* links in “*note*” | 4 seconds | Yes, only the order of the links in each block |
+| Already in order, also with no link lines | Links in “*note*” are already in order | 4 seconds | No |
+| Something failed | Link Keeper: could not sort the links — see the developer console. | Default | No |
+
+*n* is the count from rule 6. *note* is the note name without `.md`.
+
+**Known limits** (not fixed)
+
+- A link with text around it, a note link (`[[Note]]`) or a Markdown link (`[title](https://…)`) is not a link line, so it is not sorted, and it ends a block.
+- A line under a link (a sub-item, a note) does not follow it: it stays in its place while the link moves inside its block.
+- In a nested list, the child link lines of a block mix with their parent's lines. Each place keeps its indent, so the shape of the list stays, but a link can move from a sub-item to a top item and the other way round.
+- Only the frontmatter and fenced code blocks are skipped. Link lines in comments (`%%`, `<!-- -->`), math (`$$`), HTML blocks and indented code (4 spaces) are sorted like any other, and a block can move a link into or out of indented code.
+- The command works only in the editor (editing view). Obsidian hides it in reading view and while you type in the note’s properties.
+
 ## Settings
 
 Three settings live under Settings → Link Keeper. Changes save immediately and apply to the next link.
@@ -129,9 +230,9 @@ Three settings live under Settings → Link Keeper. Changes save immediately and
 
 **Files:** the plugin is two files in `.obsidian/plugins/link-keeper/` — `manifest.json` (id `link-keeper`, version 0.1, minimum Obsidian 1.5.0) and `main.js`. Settings are stored by Obsidian in `data.json` in the same folder.
 
-**Source and build:** the code is TypeScript in `src/` (`links.ts` holds the duplicate and line rules with no Obsidian imports, so it is tested on its own). `make build` type-checks it, bundles it into `plugin/main.js` with Deno (no Node or npm) and copies `manifest.json` next to it. `make test` runs the tests in `tests/`. The `plugin/` folder is build output and is not kept in git.
+**Source and build:** the code is TypeScript in `src/` (`links.ts` holds the duplicate and line rules and `sort.ts` the sort rules, both with no Obsidian imports, so they are tested on their own). `make build` type-checks it, bundles it into `plugin/main.js` with Deno (no Node or npm) and copies `manifest.json` next to it. `make test` runs the tests in `tests/`. The `plugin/` folder is build output and is not kept in git.
 
-**Releases:** GitHub Actions runs the tests on every push. Pushing a git tag also publishes a GitHub release for that tag with `main.js`, `manifest.json` and `link-keeper.zip` (unzips to `link-keeper/`), only when the tests pass. If the tag already has a release, it is rewritten with the new files; the tag stays.
+**Releases:** GitHub Actions runs lint, build and tests on every push to `main` and every pull request; it does not publish releases. A release is made by hand: `scripts/release.sh <tag>` checks that the tag is the `version` in `manifest.json`, that the local Deno is the version CI uses, that `origin` is a GitHub repository (an https or SSH URL, an SSH host alias that points at github.com, or an `insteadOf` short name), that `gh` can see that repository, that the checked-out commit is the tag, that there are no uncommitted or untracked files, that the tag on GitHub is the same commit and that `gh` can reach the release (a missing release is fine). All `gh` calls go to the `origin` repository. Then it runs `make test zip` and uploads `main.js`, `manifest.json` and `link-keeper.zip` (unzips to `link-keeper/`) to the GitHub release for that tag. A failed check or test stops it before anything is published. If the tag already has a release, its three files are replaced (and its notes, when `docs/releases/<tag>.md` exists); the release is not deleted first, so a failed upload can be finished by running the script again. The tag stays.
 
 **Key implementation choices:**
 

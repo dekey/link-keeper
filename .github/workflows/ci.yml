@@ -1,13 +1,8 @@
-# Tests on every push and pull request.
-# On a tag push, the tested files are published as a GitHub release for that tag.
-# If the tag already has a release, it is rewritten (see scripts/release.sh).
-
 name: CI
 
 on:
   push:
     branches: [main]
-    tags: ["*"]
   pull_request:
 
 permissions:
@@ -28,45 +23,3 @@ jobs:
 
       - name: Type-check, build and test
         run: make test
-
-      - name: Package release files
-        run: make zip
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: link-keeper
-          path: |
-            plugin/main.js
-            plugin/manifest.json
-            dist/link-keeper.zip
-          if-no-files-found: error
-
-  release:
-    # Only for tags, and only when the tests passed.
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    # Two pushes of the same tag must not delete and create the release at the same time.
-    concurrency:
-      group: release-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-
-      # The exact files the test job built and tested.
-      - uses: actions/download-artifact@v8
-        with:
-          name: link-keeper
-          path: release
-
-      - name: Create or rewrite the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: >-
-          scripts/release.sh "$TAG"
-          release/plugin/main.js
-          release/plugin/manifest.json
-          release/dist/link-keeper.zip
