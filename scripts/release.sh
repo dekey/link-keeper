@@ -48,7 +48,8 @@ fi
 github_repo() {
   local url="$1" host
   if [[ "$url" =~ ^git@([^:]+):(.+)$ ]]; then
-    host="$(ssh -G "${BASH_REMATCH[1]}" 2>/dev/null | awk '$1 == "hostname" { print $2 }')"
+    # "--": a host that starts with "-" is a host name, not an ssh option.
+    host="$(ssh -G -- "${BASH_REMATCH[1]}" 2>/dev/null | awk '$1 == "hostname" { print $2 }')"
     if [ "$host" = "github.com" ]; then url="git@github.com:${BASH_REMATCH[2]}"; fi
   fi
   sed -E -n 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+/[^/]+)$#\2#p' <<<"$url" |

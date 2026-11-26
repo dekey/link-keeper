@@ -1,83 +1,53 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { URL_RE } from "../src/links.ts";
-import { compareKeys, lineChanges, sortKey, sortLinkLines } from "../src/sort.ts";
+import { compareKeys, lineChanges, linkLine, sortLinkLines } from "../src/sort.ts";
 
-// --- Sort key of a web link (SPEC.md "Sorting links", "Sort key") ---
+// --- Sort key of a link line (SPEC.md "Sorting links", rule 3) ---
 
 Deno.test("web link key is the last part of the address, without the query", () => {
-  assertEquals(sortKey("- https://a.com/docs/page?id=2"), "page");
+  assertEquals(linkLine("- https://a.com/docs/page?id=2")?.key, "page");
 });
 
 Deno.test("web link key ends before the anchor", () => {
-  assertEquals(sortKey("- https://a.com/page#intro"), "page");
+  assertEquals(linkLine("- https://a.com/page#intro")?.key, "page");
 });
 
 Deno.test("web link key ignores a trailing slash", () => {
-  assertEquals(sortKey("- https://a.com/docs/"), "docs");
+  assertEquals(linkLine("- https://a.com/docs/")?.key, "docs");
 });
 
 Deno.test("web link key ignores several trailing slashes", () => {
-  assertEquals(sortKey("- https://a.com/docs//"), "docs");
+  assertEquals(linkLine("- https://a.com/docs//")?.key, "docs");
 });
 
-Deno.test("web link key ignores a full stop after the link in a sentence", () => {
-  assertEquals(sortKey("see https://a.com/docs/."), "docs");
+Deno.test("web link key ignores a full stop stuck to the end of the link", () => {
+  assertEquals(linkLine("- https://a.com/docs/.")?.key, "docs");
 });
 
-Deno.test("web link key ignores bold, italic and strike-through marks glued to a bare link", () => {
-  const lines = {
-    "- **https://a.com/zeta**": "zeta",
-    "- _https://a.com/zeta_": "zeta",
-    "- ~~https://a.com/zeta~~": "zeta",
-    "- **https://a.com/zeta**.": "zeta",
-    "- *https://a.com/docs/?id=2*": "docs",
-  };
-  for (const [line, key] of Object.entries(lines)) assertEquals(sortKey(line), key, line);
-});
-
-Deno.test("a bold bare link sorts by its address, as if it were not bold", () => {
-  assertEquals(sortLinkLines(note("- **https://a.com/zeta**", "- https://a.com/zeta-2", "")), {
-    content: note("- **https://a.com/zeta**", "- https://a.com/zeta-2", ""),
-    links: 2,
-    changed: false,
-  });
-  assertEquals(sortLinkLines(note("- https://a.com/zeta-2", "- **https://a.com/zeta**", "")), {
-    content: note("- **https://a.com/zeta**", "- https://a.com/zeta-2", ""),
-    links: 2,
-    changed: true,
-  });
+// The query and the anchor are cut first, so punctuation and slashes in front of them go too.
+Deno.test("web link key drops the punctuation and slashes in front of the query or the anchor", () => {
+  assertEquals(linkLine("- https://a.com/docs.?x=1")?.key, "docs");
+  assertEquals(linkLine("- https://a.com/docs/.#top")?.key, "docs");
+  assertEquals(linkLine("- https://a.com/docs./")?.key, "docs");
 });
 
 Deno.test("web link with no path is sorted by its domain", () => {
-  assertEquals(sortKey("- https://a.com"), "a.com");
+  assertEquals(linkLine("- https://a.com")?.key, "a.com");
 });
 
 Deno.test("web link with no path keeps www in its key", () => {
-  assertEquals(sortKey("- https://www.a.com/"), "www.a.com");
-});
-
-Deno.test("Markdown link is sorted by its address, not by its title, and keeps capitals", () => {
-  assertEquals(sortKey("- [Zebra](https://c.com/blog/Alpha)"), "Alpha");
-});
-
-Deno.test("a Markdown link with a web address in its title is sorted by the address it opens", () => {
-  const lines = {
-    "- [https://b.com/zeta](https://a.com/alpha)": "alpha",
-    "- [see https://b.com/zeta here](https://a.com/alpha)": "alpha",
-    "- [https://b.com/zeta](<https://a.com/alpha>)": "alpha",
-    // No "(address)" after the brackets: not a Markdown link, so the address in them counts.
-    "- [https://b.com/zeta]": "zeta",
-  };
-  for (const [line, key] of Object.entries(lines)) assertEquals(sortKey(line), key, line);
+  assertEquals(linkLine("- https://www.a.com/")?.key, "www.a.com");
 });
 
 Deno.test("web link key keeps round brackets that are part of the address", () => {
-  assertEquals(sortKey("- https://en.wikipedia.org/wiki/Mercury_(planet)"), "Mercury_(planet)");
+  assertEquals(
+    linkLine("- https://en.wikipedia.org/wiki/Mercury_(planet)")?.key,
+    "Mercury_(planet)",
+  );
 });
 
 Deno.test("web link key turns percent codes back into letters", () => {
   assertEquals(
-    sortKey("- https://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0"),
+    linkLine("- https://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0")?.key,
     "Москва",
   );
 });
@@ -85,85 +55,36 @@ Deno.test("web link key turns percent codes back into letters", () => {
 // The steps run in a fixed order: the anchor and the query are cut before the last part is
 // taken, so a "/" in them does not change the key.
 Deno.test("a / in the anchor does not change the key: the anchor is cut first", () => {
-  assertEquals(sortKey("- https://app.com/#/settings"), "app.com");
+  assertEquals(linkLine("- https://app.com/#/settings")?.key, "app.com");
 });
 
 Deno.test("a / in the query does not change the key: the query is cut first", () => {
-  assertEquals(sortKey("- https://a.com/page?next=/home"), "page");
+  assertEquals(linkLine("- https://a.com/page?next=/home")?.key, "page");
 });
 
-// --- Sort key of a note link ---
-
-Deno.test("note link key is the note name, without folder and alias", () => {
-  assertEquals(sortKey("- [[Folder/My Note|alias]]"), "My Note");
+Deno.test("broken percent code keeps the key text as it is", () => {
+  assertEquals(linkLine("- https://a.com/100%")?.key, "100%");
 });
 
-Deno.test("note link to a heading is sorted by the note name", () => {
-  assertEquals(sortKey("- [[Note#Heading]]"), "Note");
+// linkLine reads the line with a pattern built from URL_RE and its flags. If URL_RE got the `g`
+// flag, the second call would start after the first (longer) line and miss the link.
+Deno.test("each line is read on its own: a long link line before does not hide the next link", () => {
+  assertEquals(linkLine("- https://a.com/very/long/path/to/zeta")?.key, "zeta");
+  assertEquals(linkLine("- https://b.com/alpha")?.key, "alpha");
 });
 
-Deno.test("note link to a heading in the same note is sorted by the heading text", () => {
-  assertEquals(sortKey("- [[#Heading]]"), "Heading");
-});
-
-Deno.test("a / in the alias does not change the key: the alias is cut first", () => {
-  assertEquals(sortKey("- [[Folder/Note|a/b]]"), "Note");
-});
-
-Deno.test("a heading in the same note is sorted by its whole text, also when it holds a /", () => {
-  assertEquals(sortKey("- [[#Q&A / Notes]]"), "Q&A / Notes");
-});
-
-// --- The first link in the line gives the key ---
-
-Deno.test("web link before a note link in the same line gives the key", () => {
-  assertEquals(sortKey("- https://a.com/x [[Other]]"), "x");
-});
-
-Deno.test("note link before a web link in the same line gives the key", () => {
-  assertEquals(sortKey("- [[Other]] https://a.com/x"), "Other");
-});
-
-// --- Lines that are not link lines ---
+// --- Lines with no link ---
 
 Deno.test("heading text with no link is not a link line", () => {
-  assertEquals(sortKey("# Reading list"), null);
+  assertEquals(linkLine("# Reading list"), null);
 });
 
 Deno.test("plain text with no link is not a link line", () => {
-  assertEquals(sortKey("Some text about a.com and docs"), null);
+  assertEquals(linkLine("Some text about a.com and docs"), null);
 });
 
 Deno.test("empty line is not a link line", () => {
-  assertEquals(sortKey(""), null);
-});
-
-Deno.test("note link that is never closed with ]] is not a link line", () => {
-  assertEquals(sortKey("- [[Unfinished note"), null);
-});
-
-// --- Edge cases ---
-
-Deno.test("broken percent code keeps the key text as it is", () => {
-  assertEquals(sortKey("- https://a.com/100%"), "100%");
-});
-
-// sortKey uses its own pattern without the `g` flag. If that pattern got the `g` flag, the second
-// call would start after the first (longer) line and miss the link.
-Deno.test("each line is read on its own: a long link line before does not hide the next link", () => {
-  assertEquals(sortKey("- https://a.com/very/long/path/to/zeta"), "zeta");
-  assertEquals(sortKey("- https://b.com/alpha"), "alpha");
-});
-
-// Other code may leave a position in the shared URL_RE (exec or test elsewhere). The sort key
-// must not start its search there.
-Deno.test("a position left in the shared link pattern does not hide the link of a line", () => {
-  URL_RE.lastIndex = 10;
-  try {
-    assertEquals(sortKey("- https://b.com/alpha"), "alpha");
-  } finally {
-    URL_RE.lastIndex = 0;
-  }
+  assertEquals(linkLine(""), null);
 });
 
 // --- Order of keys ---
@@ -210,40 +131,166 @@ Deno.test("keys that differ only in capital letters or accents are equal", () =>
   assertEquals(compareKeys("éclair", "eclair"), 0);
 });
 
-// --- Sorting the link lines of a note ---
+// --- Sorting the blocks of link lines of a note ---
 
 /** Joins lines with "\n", so a test shows the note line by line. */
 function note(...lines: string[]): string {
   return lines.join("\n");
 }
 
-Deno.test("link lines are sorted by key while other lines keep their places", () => {
+Deno.test("each block of link lines is sorted on its own while other lines keep their places", () => {
+  // The SPEC "Sorting links" example: two blocks split by a text line.
   const before = note(
     "# Reading",
     "- https://b.com/zeta",
-    "Some text",
     "- https://a.com/2-intro",
-    "- [Alpha](https://c.com/docs/alpha/)",
+    "Some text",
+    "1. https://github.com/dekey/link-keeper",
+    "2. [ ] https://github.com/dekey/link-keeper/pull/2",
     "",
   );
   const after = note(
     "# Reading",
     "- https://a.com/2-intro",
-    "Some text",
-    "- [Alpha](https://c.com/docs/alpha/)",
     "- https://b.com/zeta",
+    "Some text",
+    "1. [ ] https://github.com/dekey/link-keeper/pull/2",
+    "2. https://github.com/dekey/link-keeper",
+    "",
+  );
+  assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
+});
+
+// --- Rule 1: a link line is one web link, with only spaces, a list marker and a task box
+// before it ---
+
+Deno.test("only a line with one web link and nothing else but a list marker and a task box before it is sorted", () => {
+  // Each line goes over a line of the same shape whose link sorts first ("…/0"). A link line
+  // moves down below it; any other line is not sorted, so the note stays as it is.
+  const rows: [line: string, first: string, isLinkLine: boolean][] = [
+    ["https://github.com/dekey/link-keeper", "https://a.com/0", true],
+    ["- https://github.com/dekey/link-keeper/pull/2", "- https://a.com/0", true],
+    ["12. https://a.com/x", "12. https://a.com/0", true],
+    ["+ https://a.com/x", "+ https://a.com/0", true],
+    ["\t- [ ]  https://a.com/x", "\t- [ ]  https://a.com/0", true],
+    ["- [X] https://a.com/x", "- [X] https://a.com/0", true],
+    ["-   https://a.com/x", "-   https://a.com/0", true],
+    ["-\thttps://a.com/x", "-\thttps://a.com/0", true],
+    ["HTTPS://A.COM/x", "HTTPS://A.COM/0", true],
+    ["- https://a.com/x \t", "- https://a.com/0 \t", true],
+    ["-https://a.com/x", "-https://a.com/0", false],
+    ["*https://a.com/x*", "*https://a.com/0*", false],
+    ["- [ ]https://a.com/x", "- [ ]https://a.com/0", false],
+    ["See https://a.com/x", "See https://a.com/0", false],
+    ["- https://a.com/x nice", "- https://a.com/0 nice", false],
+    ["- https://a.com/x https://b.com/y", "- https://a.com/0 https://b.com/0", false],
+    ["- [title](https://a.com/x)", "- [title](https://a.com/0)", false],
+    ["- [[Note]]", "- [[0]]", false],
+    ["> https://a.com/x", "> https://a.com/0", false],
+    ["# https://a.com/x", "# https://a.com/0", false],
+    ["- 2. https://a.com/x", "- 2. https://a.com/0", false],
+    ["[ ] https://a.com/x", "[ ] https://a.com/0", false],
+    ["- [-] https://a.com/x", "- [-] https://a.com/0", false],
+    ["- <https://a.com/x>", "- <https://a.com/0>", false],
+  ];
+  for (const [line, first, isLinkLine] of rows) {
+    const before = note(line, first, "");
+    const expected = isLinkLine
+      ? { content: note(first, line, ""), links: 2, changed: true }
+      : { content: before, links: 0, changed: false };
+    assertEquals(sortLinkLines(before), expected, JSON.stringify(line));
+  }
+});
+
+// --- Rule 2: a block is link lines right under each other ---
+
+Deno.test("a blank line, a text line, a heading and a line with a link and text each end a block", () => {
+  for (const line of ["", "Some text", "## More", "- https://c.com/aaa read later"]) {
+    const before = note(
+      "- https://b.com/zeta",
+      "- https://b.com/beta",
+      line,
+      "- https://a.com/mid",
+      "- https://a.com/alpha",
+      "",
+    );
+    const after = note(
+      "- https://b.com/beta",
+      "- https://b.com/zeta",
+      line,
+      "- https://a.com/alpha",
+      "- https://a.com/mid",
+      "",
+    );
+    assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true }, line);
+  }
+});
+
+Deno.test("two blocks in one note are sorted each on their own: no link moves to the other block", () => {
+  const before = note(
+    "## Top",
+    "1. https://b.com/zeta",
+    "2. https://a.com/alpha",
+    "3. https://c.com/mid",
+    "",
+    "## More",
+    "- https://d.com/beta",
+    "- https://d.com/aaa",
+    "",
+  );
+  const after = note(
+    "## Top",
+    "1. https://a.com/alpha",
+    "2. https://c.com/mid",
+    "3. https://b.com/zeta",
+    "",
+    "## More",
+    "- https://d.com/aaa",
+    "- https://d.com/beta",
+    "",
+  );
+  assertEquals(sortLinkLines(before), { content: after, links: 5, changed: true });
+});
+
+Deno.test("a block ends where the list marker comes or goes, so no task box lands on a line without a marker", () => {
+  const before = note(
+    "https://a.com/zeta",
+    "- [x] https://a.com/beta",
+    "- [ ] https://a.com/alpha",
+    "",
+  );
+  const after = note(
+    "https://a.com/zeta",
+    "- [ ] https://a.com/alpha",
+    "- [x] https://a.com/beta",
     "",
   );
   assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
+
+  const listThenPlain = note("- https://a.com/zeta", "https://a.com/alpha", "");
+  assertEquals(sortLinkLines(listThenPlain), { content: listThenPlain, links: 2, changed: false });
 });
 
-Deno.test("links that start with a digit come before links that start with a letter", () => {
-  const result = sortLinkLines(note("- https://x.com/alpha", "- https://x.com/2-intro", ""));
-  assertEquals(result, {
-    content: note("- https://x.com/2-intro", "- https://x.com/alpha", ""),
-    links: 2,
-    changed: true,
-  });
+// The PR #2 review case: the old sort turned a link line here into a heading.
+Deno.test("a line with two list markers over an indented --- is not a link line, so the note keeps its structure", () => {
+  const text = note("- 2. https://x.com/zeta", "    ---", "- [ ] https://x.com/alpha", "");
+  assertEquals(sortLinkLines(text), { content: text, links: 1, changed: false });
+});
+
+// --- Rule 3: order inside a block ---
+
+Deno.test("the key is the last part of the link, so …/pull/2 sorts before …/link-keeper", () => {
+  const before = note(
+    "- https://github.com/dekey/link-keeper",
+    "- https://github.com/dekey/link-keeper/pull/2",
+    "",
+  );
+  const after = note(
+    "- https://github.com/dekey/link-keeper/pull/2",
+    "- https://github.com/dekey/link-keeper",
+    "",
+  );
+  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
 });
 
 Deno.test("numbers in keys are compared by value: 2 comes before 10", () => {
@@ -255,18 +302,51 @@ Deno.test("numbers in keys are compared by value: 2 comes before 10", () => {
   });
 });
 
-Deno.test("capital letters do not change the order", () => {
-  const result = sortLinkLines(note("- https://x.com/Zeta", "- https://x.com/alpha", ""));
-  assertEquals(result, {
-    content: note("- https://x.com/alpha", "- https://x.com/Zeta", ""),
-    links: 2,
-    changed: true,
-  });
-});
-
 Deno.test("links with the same key keep their old order", () => {
   const before = note("- https://b.com/x", "- https://a.com/x", "");
   assertEquals(sortLinkLines(before), { content: before, links: 2, changed: false });
+});
+
+// --- Rule 4: each place keeps its start (indent and list marker); the rest moves ---
+
+Deno.test("a numbered list keeps its numbers 1, 2, 3 in order, only the links move", () => {
+  const before = note(
+    "# Reading list",
+    "",
+    "1. https://x.com/zen",
+    "2. https://x.com/atomic-habits",
+    "3. https://x.com/deep-work",
+    "",
+  );
+  const after = note(
+    "# Reading list",
+    "",
+    "1. https://x.com/atomic-habits",
+    "2. https://x.com/deep-work",
+    "3. https://x.com/zen",
+    "",
+  );
+  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
+});
+
+// The child lines are in the same block as their parents, so their links mix (a known limit),
+// but each place keeps its indent, so the shape of the list stays.
+Deno.test("each place keeps its indent, list marker and the spaces after it, also in a nested list", () => {
+  const before = note(
+    "1) https://x.com/projects",
+    "\t*   https://x.com/zeta-plan",
+    "\t* https://x.com/alpha-plan",
+    "2) https://x.com/inbox",
+    "",
+  );
+  const after = note(
+    "1) https://x.com/alpha-plan",
+    "\t*   https://x.com/inbox",
+    "\t* https://x.com/projects",
+    "2) https://x.com/zeta-plan",
+    "",
+  );
+  assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
 });
 
 Deno.test("a task box moves with its link, also into a place without a box", () => {
@@ -285,159 +365,100 @@ Deno.test("a task box moves with its link, also into a place without a box", () 
   assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
 });
 
-// --- A list place keeps its start: spaces, list marker and the spaces after it ---
-
-Deno.test("a numbered list keeps its numbers 1, 2, 3 in order, only the links move", () => {
-  const before = note(
-    "# Reading list",
-    "",
-    "1. [[Zen and the Art]]",
-    "2. [[Atomic Habits]]",
-    "3. [[Deep Work]]",
-    "",
-  );
-  const after = note(
-    "# Reading list",
-    "",
-    "1. [[Atomic Habits]]",
-    "2. [[Deep Work]]",
-    "3. [[Zen and the Art]]",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
+// Two spaces at a line end are a line break in Markdown: they must not move to another line.
+Deno.test("spaces and tabs at the line end stay in their place, so a line break does not move and a sorted note is not rewritten", () => {
+  const before = note("https://z.com/zeta  ", "https://a.com/alpha  ", "https://m.com/mid", "");
+  assertEquals(sortLinkLines(before), {
+    content: note("https://a.com/alpha  ", "https://m.com/mid  ", "https://z.com/zeta", ""),
+    links: 3,
+    changed: true,
+  });
+  const sorted = note("- https://x.com/alpha\t", "- https://x.com/zeta  ", "");
+  assertEquals(sortLinkLines(sorted), { content: sorted, links: 2, changed: false });
 });
 
-Deno.test("a numbered list right under a text line still starts with 1 after the sort", () => {
-  const before = note(
-    "Books to read:",
-    "1. [[The Pragmatic Programmer]]",
-    "2. [[Clean Code]]",
-    "3. [[Atomic Habits]]",
-    "",
-  );
-  const after = note(
-    "Books to read:",
-    "1. [[Atomic Habits]]",
-    "2. [[Clean Code]]",
-    "3. [[The Pragmatic Programmer]]",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
-});
-
-Deno.test("a numbered list stays numbered and a bullet list stays bulleted when links move between them", () => {
-  const before = note(
-    "## Top",
-    "1. https://b.com/zeta",
-    "2. https://a.com/alpha",
-    "3. https://c.com/mid",
-    "",
-    "## More",
-    "- https://d.com/beta",
-    "",
-  );
-  const after = note(
-    "## Top",
-    "1. https://a.com/alpha",
-    "2. https://d.com/beta",
-    "3. https://c.com/mid",
-    "",
-    "## More",
-    "- https://b.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
-});
-
-Deno.test("a nested list keeps its indents, markers and the spaces after them in place", () => {
-  const before = note(
-    "1) [[Projects]]",
-    "\t*   [[Zeta plan]]",
-    "\t* [[Alpha plan]]",
-    "2) [[Inbox]]",
-    "",
-  );
-  const after = note(
-    "1) [[Alpha plan]]",
-    "\t*   [[Inbox]]",
-    "\t* [[Projects]]",
-    "2) [[Zeta plan]]",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
-});
-
-Deno.test("note links and web links are sorted together", () => {
-  const before = note("- [[Beta]]", "- https://x.com/zeta", "- [Read](https://x.com/alpha)", "");
-  const after = note("- [Read](https://x.com/alpha)", "- [[Beta]]", "- https://x.com/zeta", "");
-  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
-});
-
-Deno.test("a link with an empty key is still a link line and sorts first", () => {
-  const result = sortLinkLines(note("- https://x.com/zeta", "- [[#]]", ""));
-  assertEquals(result, {
-    content: note("- [[#]]", "- https://x.com/zeta", ""),
+Deno.test("each place keeps its own line ending in a Windows note without a final line break", () => {
+  assertEquals(sortLinkLines("# R\r\n- https://x.com/zeta\r\n- https://x.com/alpha"), {
+    content: "# R\r\n- https://x.com/alpha\r\n- https://x.com/zeta",
     links: 2,
     changed: true,
   });
 });
 
-// --- Blocks and lines that never move ---
-// Each test checks the full note text: the lines of the block (or the fixed line) keep their
-// places and the link lines around them get sorted. So a block that is not found, or that does
-// not end where it should (and swallows the rest of the note), makes the test fail.
+Deno.test("a byte order mark stays at the start of the note when the first link line moves", () => {
+  assertEquals(sortLinkLines("\uFEFF- https://x.com/zeta\n- https://x.com/alpha\n"), {
+    content: "\uFEFF- https://x.com/alpha\n- https://x.com/zeta\n",
+    links: 2,
+    changed: true,
+  });
+});
 
-Deno.test("frontmatter stays as it is, links below it are sorted", () => {
-  const before = note(
-    "---",
-    "source: https://z.com/zeta",
-    "tags: [reading]",
-    "---",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "---",
-    "source: https://z.com/zeta",
-    "tags: [reading]",
-    "---",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  );
+// --- Rule 5: the frontmatter and fenced code blocks are never touched ---
+
+/**
+ * Checks that the sort does not touch `part` (frontmatter or a code block) and sorts the block
+ * right under it. `part` holds the out-of-order link lines "- https://x.com/zeta" and
+ * "- https://x.com/alpha": if the part is not skipped, they get sorted; if the part does not
+ * end where it should, it takes in the block under it, and that block is not sorted. Both give
+ * another note text.
+ */
+function assertPartStays(...part: string[]): void {
+  const before = note(...part, "- https://y.com/beta", "- https://y.com/alpha", "");
+  const after = note(...part, "- https://y.com/alpha", "- https://y.com/beta", "");
   assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
+}
+
+Deno.test("frontmatter stays as it is, also a YAML list of links in it, and the block below it is sorted", () => {
+  assertPartStays(
+    "---",
+    "links:",
+    "  - https://x.com/zeta",
+    "  - https://x.com/alpha",
+    "---",
+  );
 });
 
 Deno.test("frontmatter stays as it is in a note with Windows line breaks", () => {
-  const before = [
-    "---",
-    "source: https://z.com/zeta",
-    "---",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  ].join("\r\n");
-  const after = [
-    "---",
-    "source: https://z.com/zeta",
-    "---",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  ].join("\r\n");
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
+  const frontmatter = ["---", "links:", "- https://x.com/zeta", "- https://x.com/alpha", "---"];
+  const before = [...frontmatter, "- https://y.com/beta", "- https://y.com/alpha", ""];
+  const after = [...frontmatter, "- https://y.com/alpha", "- https://y.com/beta", ""];
+  assertEquals(sortLinkLines(before.join("\r\n")), {
+    content: after.join("\r\n"),
+    links: 2,
+    changed: true,
+  });
 });
 
 Deno.test("a line of three dots does not end frontmatter: only a --- line does, as in Obsidian", () => {
-  const frontmatter = ["---", "source: https://z.com/zeta", "...", "- https://x.com/zeta", "---"];
-  assertEquals(
-    sortLinkLines(note(...frontmatter, "- https://x.com/beta", "- https://x.com/alpha", "")),
-    {
-      content: note(...frontmatter, "- https://x.com/alpha", "- https://x.com/beta", ""),
-      links: 2,
-      changed: true,
-    },
+  assertPartStays(
+    "---",
+    "title: Reading",
+    "...",
+    "- https://x.com/zeta",
+    "- https://x.com/alpha",
+    "---",
+  );
+});
+
+Deno.test("a --- line with a space after it does not end frontmatter: only an exact --- line does", () => {
+  assertPartStays(
+    "---",
+    "title: Reading",
+    "--- ",
+    "- https://x.com/zeta",
+    "- https://x.com/alpha",
+    "---",
+  );
+});
+
+Deno.test("a ``` line inside frontmatter does not open a code block", () => {
+  assertPartStays(
+    "---",
+    "note: |",
+    "  ```",
+    "  - https://x.com/zeta",
+    "  - https://x.com/alpha",
+    "---",
   );
 });
 
@@ -455,31 +476,13 @@ Deno.test("a --- at the top with no closing --- is a divider, so the links below
 });
 
 Deno.test("frontmatter after an invisible byte order mark stays as it is", () => {
-  const before = note(
+  assertPartStays(
     "\uFEFF---",
-    "source: https://z.com/zeta",
-    "---",
+    "links:",
     "- https://x.com/zeta",
     "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "\uFEFF---",
-    "source: https://z.com/zeta",
     "---",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
   );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a byte order mark stays at the start of the note when the first link line moves", () => {
-  assertEquals(sortLinkLines("\uFEFF- https://x.com/zeta\n- https://x.com/alpha\n"), {
-    content: "\uFEFF- https://x.com/alpha\n- https://x.com/zeta\n",
-    links: 2,
-    changed: true,
-  });
 });
 
 Deno.test("a --- line below the top is a divider, not frontmatter", () => {
@@ -487,481 +490,112 @@ Deno.test("a --- line below the top is a divider, not frontmatter", () => {
     "# Links",
     "---",
     "- https://x.com/zeta",
-    "---",
     "- https://x.com/alpha",
+    "---",
     "",
   );
   const after = note(
     "# Links",
     "---",
     "- https://x.com/alpha",
+    "- https://x.com/zeta",
     "---",
-    "- https://x.com/zeta",
     "",
   );
   assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
 });
 
-// The four code block tests below start the note with the block, with links only below it.
-// assertBlockStays (further down) always puts a link above the block, so it does not cover a
-// block on the first line; these tests write the note out in full instead.
-Deno.test("a ``` code block is not closed by ~~~ and its link stays in place", () => {
-  const before = note(
-    "```text",
-    "~~~",
-    "- https://x.com/beta",
-    "```",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "```text",
-    "~~~",
-    "- https://x.com/beta",
-    "```",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a ```` code block is not closed by a shorter ``` line and its link stays in place", () => {
-  const before = note(
-    "````md",
-    "```",
-    "- https://x.com/beta",
-    "```",
-    "````",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "````md",
-    "```",
-    "- https://x.com/beta",
-    "```",
-    "````",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a fence line with text after it does not close the code block", () => {
-  const before = note(
-    "```",
-    "- https://x.com/beta",
-    "```js",
-    "- https://x.com/gamma",
-    "```",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "```",
-    "- https://x.com/beta",
-    "```js",
-    "- https://x.com/gamma",
-    "```",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("an indented code block inside a list item stays in place", () => {
-  const before = note(
-    "- item",
-    "  ```",
-    "  - https://x.com/beta",
-    "  ```",
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- item",
-    "  ```",
-    "  - https://x.com/beta",
-    "  ```",
-    "- https://x.com/alpha",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a code block that is never closed runs to the end of the note", () => {
-  const before = note(
-    "- https://x.com/zeta",
-    "- https://x.com/beta",
-    "~~~py",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- https://x.com/beta",
-    "- https://x.com/zeta",
-    "~~~py",
-    "- https://x.com/alpha",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("headings, table rows and quotes with links stay in place", () => {
-  const before = note(
-    "## [[Project X]]",
-    "- https://x.com/zeta",
-    "| [[A]] | b |",
-    "- https://x.com/beta",
-    "> see https://a.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "## [[Project X]]",
-    "- https://x.com/alpha",
-    "| [[A]] | b |",
-    "- https://x.com/beta",
-    "> see https://a.com/zeta",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
-});
-
-Deno.test("footnote definitions with links stay in place while the other plain link lines are sorted", () => {
-  const footnotes = ["", "[^1]: https://a.com/alpha", "[^2]: https://b.com/beta", ""];
-  const onlyOneOther = note(
-    "# Article notes",
-    "Main claim.[^1] Second claim.[^2]",
-    "Video: https://youtube.com/watch?v=x",
-    ...footnotes,
-  );
-  assertEquals(sortLinkLines(onlyOneOther), { content: onlyOneOther, links: 1, changed: false });
-
-  const before = note(
-    "# Article notes",
-    "Main claim.[^1] Second claim.[^2]",
-    "Video: https://youtube.com/watch?v=x",
-    "Slides: https://slides.com/deck",
-    ...footnotes,
-  );
-  const after = note(
-    "# Article notes",
-    "Main claim.[^1] Second claim.[^2]",
-    "Slides: https://slides.com/deck",
-    "Video: https://youtube.com/watch?v=x",
-    ...footnotes,
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("link reference definitions ([a]: address) stay in place while the other plain link lines are sorted", () => {
-  const before = note(
-    "Read the [guide][g] and the [docs][d] first.",
-    "https://z.com/zeta",
-    "https://a.com/alpha",
-    "",
-    "[g]: https://b.com/beta",
-    "  [d]: https://c.com/aaa",
-    "",
-  );
-  const after = note(
-    "Read the [guide][g] and the [docs][d] first.",
-    "https://a.com/alpha",
-    "https://z.com/zeta",
-    "",
-    "[g]: https://b.com/beta",
-    "  [d]: https://c.com/aaa",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("an indented callout with a link stays in place", () => {
-  const before = note(
-    "- https://x.com/zeta",
-    "  > [!note] https://x.com/aaa",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- https://x.com/alpha",
-    "  > [!note] https://x.com/aaa",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("an underlined heading (a text line with === or --- under it) with a link stays in place", () => {
-  for (const underline of ["===", "---"]) {
-    const before = note(
-      "- https://x.com/zeta",
-      "",
-      "[[Aaa]]",
-      underline,
-      "- https://x.com/alpha",
-      "",
-    );
-    const after = note(
-      "- https://x.com/alpha",
-      "",
-      "[[Aaa]]",
-      underline,
-      "- https://x.com/zeta",
-      "",
-    );
-    assertEquals(
-      sortLinkLines(before),
-      { content: after, links: 2, changed: true },
-      `underline ${underline}`,
-    );
+// Lines inside a code block are not link lines, so the link lines above and below it are two
+// blocks: no link moves across the code block.
+Deno.test("a code block between two link lines ends the block, so no link moves across it", () => {
+  for (const fence of ["```", "~~~"]) {
+    const before = note("- https://a.com/zeta", fence, "code", fence, "- https://a.com/alpha", "");
+    assertEquals(sortLinkLines(before), { content: before, links: 2, changed: false }, fence);
   }
 });
 
-Deno.test("every text line of an underlined heading written over two lines stays in place", () => {
-  const before = note(
-    "- https://x.com/zeta",
-    "",
-    "https://x.com/aaa",
-    "https://x.com/aab",
-    "---",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- https://x.com/alpha",
-    "",
-    "https://x.com/aaa",
-    "https://x.com/aab",
-    "---",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a text line of a heading underlined inside a list item stays in place", () => {
-  const headings = {
-    "spaces": ["- a", "  - sub", "    https://x.com/zeta", "    ---"],
-    "tab": ["- item", "\thttps://x.com/zeta", "\t---"],
-  };
-  for (const [name, heading] of Object.entries(headings)) {
-    const before = note(...heading, "", "https://x.com/beta", "https://x.com/alpha", "");
-    const after = note(...heading, "", "https://x.com/alpha", "https://x.com/beta", "");
-    assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true }, name);
-  }
-});
-
-Deno.test("a list item with an underline indented inside the item is a heading and stays in place", () => {
-  for (const underline of ["  ---", "  ===", "\t---"]) {
-    const before = note(
-      "- https://x.com/zeta",
-      underline,
-      "",
-      "- https://x.com/beta",
-      "- https://x.com/alpha",
-      "",
-    );
-    const after = note(
-      "- https://x.com/zeta",
-      underline,
-      "",
-      "- https://x.com/alpha",
-      "- https://x.com/beta",
-      "",
-    );
-    assertEquals(
-      sortLinkLines(before),
-      { content: after, links: 2, changed: true },
-      JSON.stringify(underline),
-    );
-  }
-});
-
-Deno.test("a numbered line not starting at 1 under a text line is part of its underlined heading", () => {
-  const heading = ["Intro https://x.com/zeta", "2. https://x.com/yyy", "==="];
-  assertEquals(
-    sortLinkLines(note(...heading, "", "- https://x.com/beta", "- https://x.com/alpha", "")),
-    {
-      content: note(...heading, "", "- https://x.com/alpha", "- https://x.com/beta", ""),
-      links: 2,
-      changed: true,
-    },
-  );
-});
-
-Deno.test("a numbered list right above a --- line gets sorted: its 2. and 3. lines are list items", () => {
-  assertEquals(
-    sortLinkLines(note("1. [[Zeta]]", "2. [[Mid]]", "3. [[Alpha]]", "---", "footer", "")),
-    {
-      content: note("1. [[Alpha]]", "2. [[Mid]]", "3. [[Zeta]]", "---", "footer", ""),
-      links: 3,
-      changed: true,
-    },
-  );
-});
-
-Deno.test("a 2. line under a blank line starts a list, so a --- under it is a divider", () => {
-  assertEquals(
-    sortLinkLines(note("- https://x.com/beta", "", "2. https://x.com/alpha", "---", "")),
-    {
-      content: note("- https://x.com/alpha", "", "2. https://x.com/beta", "---", ""),
-      links: 2,
-      changed: true,
-    },
-  );
-});
-
-Deno.test("a 2. line indented into a list item's text goes on with it, so both are heading text", () => {
-  const heading = ["- https://x.com/zeta", "  2. https://x.com/yyy", "  ---"];
-  assertEquals(
-    sortLinkLines(note(...heading, "", "- https://x.com/beta", "- https://x.com/alpha", "")),
-    {
-      content: note(...heading, "", "- https://x.com/alpha", "- https://x.com/beta", ""),
-      links: 2,
-      changed: true,
-    },
-  );
-});
-
-Deno.test("a line indented 4+ columns under a heading's text goes on with it, also when it looks like a block start", () => {
-  for (const line of ["    # cont", "    - cont", "    > cont"]) {
-    const heading = ["https://z.com/zeta", line, "---", ""];
-    assertEquals(
-      sortLinkLines(note(...heading, "https://a.com/beta", "https://a.com/alpha", "")),
-      {
-        content: note(...heading, "https://a.com/alpha", "https://a.com/beta", ""),
-        links: 2,
-        changed: true,
-      },
-      line,
-    );
-  }
-});
-
-Deno.test("a --- indented 4 or more columns past the text is plain text, not an underline", () => {
-  for (const underline of ["    ---", "\t---", "    ==="]) {
-    assertEquals(
-      sortLinkLines(note("https://z.com/zeta", underline, "", "https://a.com/alpha", "")),
-      {
-        content: note("https://a.com/alpha", underline, "", "https://z.com/zeta", ""),
-        links: 2,
-        changed: true,
-      },
-      JSON.stringify(underline),
-    );
-  }
-  // Inside a list item the limit counts from the item's text: "  ---" under "- …" (text at
-  // column 2) is an underline, "      ---" (6 columns, 4 past the text) is not.
-  const item = ["- https://x.com/zeta", "      ---", ""];
-  assertEquals(sortLinkLines(note(...item, "- https://x.com/alpha", "")), {
-    content: note("- https://x.com/alpha", "      ---", "", "- https://x.com/zeta", ""),
-    links: 2,
-    changed: true,
-  });
-});
-
-Deno.test("an underline indented less than the item's text is a divider, so the item gets sorted", () => {
-  assertEquals(sortLinkLines(note("- [[Zeta]]", " ---", "- [[Alpha]]", "- [[Beta]]", "")), {
-    content: note("- [[Alpha]]", " ---", "- [[Beta]]", "- [[Zeta]]", ""),
-    links: 3,
-    changed: true,
-  });
-});
-
-Deno.test("a numbered line starting at 1 under a text line starts a list, so no heading stays", () => {
-  const before = note(
-    "Intro https://x.com/zeta",
-    "1. https://x.com/yyy",
-    "===",
-    "",
-    "- https://x.com/beta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "Intro https://x.com/zeta",
-    "1. https://x.com/alpha",
-    "===",
-    "",
-    "- https://x.com/beta",
-    "- https://x.com/yyy",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
-});
-
-Deno.test("a --- under a one-line HTML comment is a divider, so the link above it gets sorted", () => {
-  const middle = ["<!-- note -->", "---", ""];
-  assertEquals(sortLinkLines(note("https://x.com/zeta", ...middle, "https://x.com/alpha", "")), {
-    content: note("https://x.com/alpha", ...middle, "https://x.com/zeta", ""),
-    links: 2,
-    changed: true,
-  });
-});
-
-Deno.test("a --- line under a list item or a blank line is a divider, so the link above it gets sorted", () => {
-  assertEquals(sortLinkLines(note("- https://x.com/zeta", "---", "- https://x.com/alpha", "")), {
-    content: note("- https://x.com/alpha", "---", "- https://x.com/zeta", ""),
-    links: 2,
-    changed: true,
-  });
-  assertEquals(sortLinkLines(note("https://x.com/zeta", "", "---", "https://x.com/alpha", "")), {
-    content: note("https://x.com/alpha", "", "---", "https://x.com/zeta", ""),
-    links: 2,
-    changed: true,
-  });
-});
-
-/**
- * Checks that the lines of `block` keep their places while the links around it get sorted:
- * beta above the block, zeta and alpha below it. Each block holds a link with the key "aaa":
- * if the block is not found, that link moves to the top; if the block does not end where it
- * should, it swallows zeta and alpha. Both give a different note text.
- */
-function assertBlockStays(...block: string[]): void {
-  const before = note(
-    "- https://x.com/beta",
-    ...block,
-    "- https://x.com/zeta",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- https://x.com/alpha",
-    ...block,
-    "- https://x.com/beta",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
-}
-
-Deno.test("a code block ends at a closing fence line longer than its opening one", () => {
-  assertBlockStays("```", "- https://x.com/aaa", "````");
-});
-
-Deno.test("spaces and tabs after the closing fence still close the code block", () => {
-  assertBlockStays("```", "- https://x.com/aaa", "``` \t");
+Deno.test("a ``` code block is not closed by ~~~ and its links stay in place", () => {
+  assertPartStays("```text", "~~~", "- https://x.com/zeta", "- https://x.com/alpha", "```");
 });
 
 Deno.test("a ~~~ code block ends at its closing ~~~ line", () => {
-  assertBlockStays("~~~", "- https://x.com/aaa", "~~~");
+  assertPartStays("~~~", "- https://x.com/zeta", "- https://x.com/alpha", "~~~");
+});
+
+Deno.test("a ```` code block is not closed by a shorter ``` line and its links stay in place", () => {
+  assertPartStays(
+    "````md",
+    "```",
+    "- https://x.com/zeta",
+    "- https://x.com/alpha",
+    "```",
+    "````",
+  );
+});
+
+Deno.test("a code block ends at a closing fence line longer than its opening one", () => {
+  assertPartStays("```", "- https://x.com/zeta", "- https://x.com/alpha", "````");
+});
+
+Deno.test("spaces and tabs after the closing fence still close the code block", () => {
+  assertPartStays("```", "- https://x.com/zeta", "- https://x.com/alpha", "``` \t");
+});
+
+Deno.test("a tab before a fence still opens or closes the code block", () => {
+  assertPartStays("\t```", "- https://x.com/zeta", "- https://x.com/alpha", "```");
+  assertPartStays("```", "- https://x.com/zeta", "- https://x.com/alpha", "\t```");
+});
+
+// Rule 5 says "spaces or tabs": other blank-looking characters do not count.
+Deno.test("a no-break space next to a fence is not a space, so it does not open or close a code block", () => {
+  const before = note("\u00A0```", "- https://x.com/zeta", "- https://x.com/alpha", "");
+  const after = note("\u00A0```", "- https://x.com/alpha", "- https://x.com/zeta", "");
+  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
+  assertPartStays("```", "- https://x.com/zeta", "- https://x.com/alpha", "```\u00A0", "```");
+});
+
+Deno.test("two backticks or two tildes do not open a code block, so the links below them are sorted", () => {
+  for (const line of ["``", "~~"]) {
+    const before = note(line, "- https://x.com/zeta", "- https://x.com/alpha", "");
+    const after = note(line, "- https://x.com/alpha", "- https://x.com/zeta", "");
+    assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true }, line);
+  }
+});
+
+// Only a backtick fence must have no backtick after it; a ~~~ fence may have a ~ after it.
+Deno.test("a ~~~ fence with a ~ in the text after it opens a code block", () => {
+  assertPartStays("~~~ a~b", "- https://x.com/zeta", "- https://x.com/alpha", "~~~");
+});
+
+Deno.test("a fence with text after it (```js) opens a code block", () => {
+  assertPartStays("```js", "- https://x.com/zeta", "- https://x.com/alpha", "```");
+});
+
+Deno.test("a fence line with text after it does not close the code block", () => {
+  assertPartStays("```", "```js", "- https://x.com/zeta", "- https://x.com/alpha", "```");
+});
+
+Deno.test("a code block indented inside a list item stays in place", () => {
+  assertPartStays(
+    "- item",
+    "  ```",
+    "  - https://x.com/zeta",
+    "  - https://x.com/alpha",
+    "  ```",
+  );
 });
 
 Deno.test("a code block that starts on a list item line stays in place", () => {
-  assertBlockStays("- ```", "  https://x.com/aaa", "  ```");
-  assertBlockStays("1. ```", "   https://x.com/aaa", "   ```");
+  for (const opener of ["- ```", "* ```", "+ ```"]) {
+    assertPartStays(opener, "  - https://x.com/zeta", "  - https://x.com/alpha", "  ```");
+  }
+  assertPartStays("1. ```", "   - https://x.com/zeta", "   - https://x.com/alpha", "   ```");
+});
+
+Deno.test("a code block opened after two list markers stays in place", () => {
+  for (const opener of ["- 1. ```", "- - ```", "1. - ```"]) {
+    assertPartStays(opener, "     - https://x.com/zeta", "     - https://x.com/alpha", "     ```");
+  }
 });
 
 Deno.test("a line that starts with ``` and has more backticks is inline code, not a code block", () => {
@@ -970,474 +604,48 @@ Deno.test("a line that starts with ``` and has more backticks is inline code, no
   assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
 });
 
-Deno.test("an Obsidian comment block (%% lines) stays in place", () => {
-  assertBlockStays("%%", "- https://x.com/aaa", "%%");
-});
-
-Deno.test("a %% comment that starts after a link and ends on a later line keeps its lines in place", () => {
-  assertBlockStays("- https://x.com/aaa %% my notes", "more notes %%");
-});
-
-Deno.test("a link line with a one-line %% comment is still sorted", () => {
-  const before = note("- https://x.com/zeta %%read later%%", "- https://x.com/alpha", "");
-  const after = note("- https://x.com/alpha", "- https://x.com/zeta %%read later%%", "");
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("an HTML comment block (<!-- to -->) stays in place", () => {
-  assertBlockStays("<!--", "- https://x.com/aaa", "-->");
-});
-
-Deno.test("a one-line HTML comment does not hide the links below it", () => {
-  const before = note("<!-- reading list -->", "- https://x.com/zeta", "- https://x.com/alpha", "");
-  const after = note("<!-- reading list -->", "- https://x.com/alpha", "- https://x.com/zeta", "");
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("an HTML comment that ends and opens again on one line (--> <!--) keeps all its lines in place", () => {
-  assertBlockStays("<!--", "- https://x.com/aaa", "--> <!--", "- https://x.com/aab", "-->");
-});
-
-Deno.test("a table without outer | stays in place up to the next blank line", () => {
-  assertBlockStays(
-    "Name | Link",
-    "--- | ---",
-    "x | https://x.com/aaa",
-    "y | https://x.com/mid",
-    "",
-  );
-});
-
-Deno.test("a list right under a table, with no blank line, gets sorted", () => {
+Deno.test("a code block that is never closed runs to the end of the note", () => {
   const before = note(
-    "| a | b |",
-    "|---|---|",
-    "| x | y |",
+    "- https://y.com/beta",
+    "- https://y.com/alpha",
+    "~~~py",
     "- https://x.com/zeta",
     "- https://x.com/alpha",
     "",
   );
   const after = note(
-    "| a | b |",
-    "|---|---|",
-    "| x | y |",
-    "- https://x.com/alpha",
+    "- https://y.com/alpha",
+    "- https://y.com/beta",
+    "~~~py",
     "- https://x.com/zeta",
+    "- https://x.com/alpha",
     "",
   );
   assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
 });
 
-Deno.test("plain link lines under a heading right under a table get sorted", () => {
-  const before = note(
-    "a | b",
-    "--- | ---",
-    "1 | 2",
-    "## Links",
-    "https://z.com/zeta",
-    "https://a.com/alpha",
+// --- Rule 6: the count in the pop-up ---
+
+Deno.test("the link count holds every link line: also blocks of one line and lines that did not move", () => {
+  const rest = [
     "",
-  );
-  const after = note(
-    "a | b",
-    "--- | ---",
-    "1 | 2",
-    "## Links",
-    "https://a.com/alpha",
-    "https://z.com/zeta",
+    "https://a.com/solo",
+    "See https://a.com/text",
+    "```",
+    "- https://a.com/code",
+    "```",
     "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a link line that starts with an HTML comment stays, so no link moves into a table or heading above it", () => {
-  const notes = {
-    "under a table": note("| a | b |", "|---|---|", "| 1 | 2 |", "<!-- c --> https://z.com/zeta"),
-    "above a heading": note("<!-- c --> https://z.com/zeta", "Title", "---"),
-  };
-  for (const [name, start] of Object.entries(notes)) {
-    const before = start + "\n\nhttps://a.com/alpha\n";
-    assertEquals(sortLinkLines(before), { content: before, links: 1, changed: false }, name);
-  }
-});
-
-Deno.test("an empty HTML comment (<!--> or <!--->) ends in its own line, so the links below it get sorted", () => {
-  for (const comment of ["<!-->", "<!--->"]) {
-    assertEquals(
-      sortLinkLines(note(comment, "- https://z.com/zeta", "- https://a.com/alpha", "")),
-      {
-        content: note(comment, "- https://a.com/alpha", "- https://z.com/zeta", ""),
-        links: 2,
-        changed: true,
-      },
-      comment,
-    );
-  }
-});
-
-Deno.test("a code block opened after two list markers stays in place", () => {
-  for (const opener of ["- 1. ```", "- - ```", "1. - ```"]) {
-    const block = [opener, "     - https://z.com/in", "     - https://a.com/in", "     ```"];
-    assertEquals(
-      sortLinkLines(note(...block, "- https://x.com/zeta", "- https://x.com/alpha", "")),
-      {
-        content: note(...block, "- https://x.com/alpha", "- https://x.com/zeta", ""),
-        links: 2,
-        changed: true,
-      },
-      opener,
-    );
-  }
-});
-
-Deno.test("an unclosed code block opened after a list marker ends where the list item ends", () => {
-  // "  - https://z.com/in" is indented into the item's text, so it is still code; the next
-  // line at the left edge ends the item and the code block.
-  const before = note(
-    "- ```",
-    "  - https://z.com/in",
-    "- https://z.com/zeta",
-    "- https://a.com/alpha",
-    "",
-  );
-  const after = note(
-    "- ```",
-    "  - https://z.com/in",
-    "- https://a.com/alpha",
-    "- https://z.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a table ends at a code block or a comment right under it", () => {
-  const table = ["Name | Link", "--- | ---", "x | https://x.com/aaa"];
-  const blocks = [
-    ["```", "code", "```"],
-    ["%%", "hidden", "%%"],
-    ["<!--", "hidden", "-->"],
-    ["<!-- one line -->"],
   ];
-  for (const block of blocks) {
-    const before = note(...table, ...block, "https://x.com/zeta", "https://x.com/alpha", "");
-    const after = note(...table, ...block, "https://x.com/alpha", "https://x.com/zeta", "");
-    assertEquals(
-      sortLinkLines(before),
-      { content: after, links: 2, changed: true },
-      `block ${block[0]}`,
-    );
-  }
-});
-
-Deno.test("a table ends at a divider line right under it, so the links after it get sorted", () => {
-  const table = ["Name | Link", "--- | ---", "x | https://x.com/aaa"];
-  for (const divider of ["---", "***", "___", "_ _ _"]) {
-    const before = note(...table, divider, "https://x.com/zeta", "https://x.com/alpha", "");
-    const after = note(...table, divider, "https://x.com/alpha", "https://x.com/zeta", "");
-    assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true }, divider);
-  }
-});
-
-Deno.test("a table with one column and no | in its header line stays in place", () => {
-  const before = note(
-    "Links",
-    "|---|",
-    "https://x.com/aaa",
-    "",
-    "https://x.com/zeta",
-    "https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "Links",
-    "|---|",
-    "https://x.com/aaa",
-    "",
-    "https://x.com/alpha",
-    "https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a --- under a table is a divider, so the link line above the table gets sorted", () => {
-  const table = ["| a | b |", "|---|---|", "| c | d |", "---", ""];
-  assertEquals(sortLinkLines(note("https://x.com/zeta", ...table, "https://x.com/alpha", "")), {
-    content: note("https://x.com/alpha", ...table, "https://x.com/zeta", ""),
-    links: 2,
-    changed: true,
-  });
-});
-
-Deno.test("a line right above a table divider stays, so a moved link with | never makes a table", () => {
-  const before = note(
-    "https://x.com/zeta",
-    "|---|---|",
-    "",
-    "https://x.com/beta",
-    "[[Aaa|alias]]",
-    "",
-  );
-  const after = note(
-    "https://x.com/zeta",
-    "|---|---|",
-    "",
-    "[[Aaa|alias]]",
-    "https://x.com/beta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a list item right after a table inside a list item gets sorted", () => {
-  const before = note(
-    "- https://x.com/zeta",
-    "  | a | b |",
-    "  |---|---|",
-    "  | c | d |",
-    "- https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "- https://x.com/alpha",
-    "  | a | b |",
-    "  |---|---|",
-    "  | c | d |",
-    "- https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("the divider line under a table header stays in the table, also when it starts with '- '", () => {
-  assertBlockStays("Name | Link", "- | -", "x | https://x.com/aaa");
-});
-
-Deno.test("a heading with a tab after the # stays in place", () => {
-  assertBlockStays("#\thttps://x.com/aaa");
-});
-
-Deno.test("a quote indented with a tab stays in place", () => {
-  assertBlockStays("\t> https://x.com/aaa");
-});
-
-// --- Lines that look special but are link lines ---
-
-Deno.test("a #tag line with a link is not a heading and gets sorted", () => {
-  const before = note("#later https://x.com/zeta", "https://x.com/alpha", "");
-  const after = note("https://x.com/alpha", "#later https://x.com/zeta", "");
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-Deno.test("a line with 7 # is not a heading, so its link gets sorted", () => {
-  const before = note("####### https://x.com/zeta", "https://x.com/alpha", "");
-  const after = note("https://x.com/alpha", "####### https://x.com/zeta", "");
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-});
-
-// --- List-item link lines and plain link lines sort apart ---
-
-Deno.test("list-item link lines and plain link lines are sorted apart, each kind in its own places", () => {
-  const before = note(
-    "# Links",
-    "- https://x.com/zeta",
-    "- [ ] [[Mango]]",
-    "1. https://x.com/delta",
-    "",
-    "Source: https://y.com/yellow",
-    "Seen in [[Banana]]",
-    "",
-    "## More",
-    "  - https://x.com/alpha",
-    "",
-  );
-  const after = note(
-    "# Links",
-    "- https://x.com/alpha",
-    "- https://x.com/delta",
-    "1. [ ] [[Mango]]",
-    "",
-    "Seen in [[Banana]]",
-    "Source: https://y.com/yellow",
-    "",
-    "## More",
-    "  - https://x.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 6, changed: true });
-});
-
-// Notes where a plain link line in a list-item place would change what the line is.
-const PLAIN_ABOVE_DIVIDER = note(
-  "# Project",
-  "Kickoff notes: [[Meeting]]",
-  "",
-  "## Links",
-  "- https://github.com/org/api",
-  "---",
-  "## Done",
-  "",
-);
-const PLAIN_ABOVE_DIVIDER_SORTED_LIST = note(
-  "Source: [[Zeta index]]",
-  "",
-  "## Links",
-  "- https://b.com/beta",
-  "- https://a.com/alpha",
-  "---",
-  "Footer text",
-  "",
-);
-const PLAIN_UNDER_TABLE = note(
-  "| Tool | Use |",
-  "| --- | --- |",
-  "| Git | code |",
-  "- https://b.com/zeta",
-  "See https://a.com/alpha",
-);
-const PLAIN_UNDER_TABLE_WITH_LINK = note(
-  "| Name | Link |",
-  "| --- | --- |",
-  "| Spec | [[Spec]] |",
-  "- https://b.com/beta",
-  "See also https://a.com/alpha",
-  "",
-);
-
-Deno.test("a plain link line never moves above a --- divider, where it would become a heading", () => {
-  assertEquals(sortLinkLines(PLAIN_ABOVE_DIVIDER), {
-    content: PLAIN_ABOVE_DIVIDER,
-    links: 2,
-    changed: false,
-  });
-  assertEquals(sortLinkLines(PLAIN_ABOVE_DIVIDER_SORTED_LIST), {
-    content: note(
-      "Source: [[Zeta index]]",
-      "",
-      "## Links",
-      "- https://a.com/alpha",
-      "- https://b.com/beta",
-      "---",
-      "Footer text",
-      "",
-    ),
+  const sorted = note("- https://a.com/alpha", "- https://a.com/beta", ...rest);
+  assertEquals(sortLinkLines(sorted), { content: sorted, links: 3, changed: false });
+  assertEquals(sortLinkLines(note("- https://a.com/beta", "- https://a.com/alpha", ...rest)), {
+    content: sorted,
     links: 3,
     changed: true,
   });
 });
 
-Deno.test("a plain link line never moves right under a table, where it would become a table row", () => {
-  for (
-    const [name, before] of Object.entries({ PLAIN_UNDER_TABLE, PLAIN_UNDER_TABLE_WITH_LINK })
-  ) {
-    assertEquals(sortLinkLines(before), { content: before, links: 2, changed: false }, name);
-  }
-});
-
-Deno.test("sorting a note with both kinds of link lines again changes nothing and finds the same links", () => {
-  for (
-    const [name, before] of Object.entries({
-      PLAIN_ABOVE_DIVIDER,
-      PLAIN_ABOVE_DIVIDER_SORTED_LIST,
-      PLAIN_UNDER_TABLE,
-      PLAIN_UNDER_TABLE_WITH_LINK,
-    })
-  ) {
-    const first = sortLinkLines(before);
-    assertEquals(
-      sortLinkLines(first.content),
-      { content: first.content, links: first.links, changed: false },
-      name,
-    );
-  }
-});
-
-// --- A plain place keeps its start: its leading spaces and tabs ---
-
-Deno.test("a plain link line inside a nested list item keeps the tab indent of its place, so no link becomes code or leaves the list", () => {
-  const before = note(
-    "## Books",
-    "- Fiction",
-    "\t- Dune",
-    "\t  https://example.com/dune",
-    "",
-    "## Articles",
-    "https://a.com/alpha",
-    "",
-  );
-  const after = note(
-    "## Books",
-    "- Fiction",
-    "\t- Dune",
-    "\t  https://a.com/alpha",
-    "",
-    "## Articles",
-    "https://example.com/dune",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-  assertEquals(sortLinkLines(after), { content: after, links: 2, changed: false });
-});
-
-Deno.test("a plain place indented with 4 spaces keeps them, so the list stays one list and the moved link is not code", () => {
-  const before = note(
-    "- Deep Work",
-    "",
-    "    https://z.com/zeta",
-    "- Atomic Habits",
-    "",
-    "## More",
-    "https://a.com/alpha",
-    "",
-  );
-  const after = note(
-    "- Deep Work",
-    "",
-    "    https://a.com/alpha",
-    "- Atomic Habits",
-    "",
-    "## More",
-    "https://z.com/zeta",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-  assertEquals(sortLinkLines(after), { content: after, links: 2, changed: false });
-});
-
-Deno.test("the text before a link in a plain line moves with the link, only the leading tab stays", () => {
-  const before = note(
-    "## Tasks",
-    "- [ ] Fix login",
-    "\tDocs: https://docs.example.com/zeta-api",
-    "",
-    "## Links",
-    "",
-    "https://github.com/org/app/pull/42",
-    "",
-  );
-  const after = note(
-    "## Tasks",
-    "- [ ] Fix login",
-    "\thttps://github.com/org/app/pull/42",
-    "",
-    "## Links",
-    "",
-    "Docs: https://docs.example.com/zeta-api",
-    "",
-  );
-  assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
-  assertEquals(sortLinkLines(after), { content: after, links: 2, changed: false });
-});
-
-// --- Line endings and small notes ---
-
-Deno.test("each place keeps its own line ending in a Windows note without a final line break", () => {
-  assertEquals(sortLinkLines("# R\r\n- https://x.com/zeta\r\n- https://x.com/alpha"), {
-    content: "# R\r\n- https://x.com/alpha\r\n- https://x.com/zeta",
-    links: 2,
-    changed: true,
-  });
-});
+// --- Small notes and sorting twice ---
 
 Deno.test("a note without a final line break stays without one", () => {
   assertEquals(sortLinkLines("- https://x.com/zeta\n- https://x.com/alpha"), {
@@ -1461,15 +669,15 @@ Deno.test("sorting a sorted note again changes nothing", () => {
     "- https://b.com/x",
     "- https://z.com/alpha",
     "- https://a.com/x",
-    "- [[10-tips]]",
-    "- [[2-tips]]",
+    "- https://c.com/10-tips",
+    "- https://c.com/2-tips",
     "",
   ));
   assertEquals(
     first.content,
     note(
-      "- [[2-tips]]",
-      "- [[10-tips]]",
+      "- https://c.com/2-tips",
+      "- https://c.com/10-tips",
       "- https://z.com/alpha",
       "- https://b.com/x",
       "- https://a.com/x",
@@ -1499,10 +707,16 @@ Deno.test("only the lines that changed become editor changes, each from its star
 });
 
 Deno.test("a Windows line ending is not part of an editor change, so each line keeps its own", () => {
-  assertEquals(lineChanges("- [[Zeta]]\r\n- [[Alpha]]", "- [[Alpha]]\r\n- [[Zeta]]"), [
-    { from: { line: 0, ch: 0 }, to: { line: 0, ch: 10 }, text: "- [[Alpha]]" },
-    { from: { line: 1, ch: 0 }, to: { line: 1, ch: 11 }, text: "- [[Zeta]]" },
-  ]);
+  assertEquals(
+    lineChanges(
+      "- https://x.com/zeta\r\n- https://x.com/alpha",
+      "- https://x.com/alpha\r\n- https://x.com/zeta",
+    ),
+    [
+      { from: { line: 0, ch: 0 }, to: { line: 0, ch: 20 }, text: "- https://x.com/alpha" },
+      { from: { line: 1, ch: 0 }, to: { line: 1, ch: 21 }, text: "- https://x.com/zeta" },
+    ],
+  );
 });
 
 Deno.test("a note with no changed line gives no editor changes", () => {

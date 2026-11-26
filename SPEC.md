@@ -11,6 +11,7 @@ Link Keeper is an Obsidian plugin that adds a link to a note only if that note d
 - One configurable target note collects links (default `Links.md`).
 - The same check can run against the currently open note.
 - Works with web links (`https://…`) and Obsidian note links (`[[Note]]`).
+- A separate command sorts each block of link lines in the open note (see “Sorting links”).
 - Works on desktop and mobile Obsidian, version 1.4.0 or newer.
 
 ## How it works
@@ -34,14 +35,14 @@ Every add follows the same five steps:
 
 ## Commands and entry points
 
-The plugin has four commands (Command palette, Ctrl/Cmd+P) and a sidebar icon. Three commands and the icon start the add flow above; “Sort links in current note” puts the links of the open note in order (see “Sorting links” below). Each command can be given a hotkey in Settings → Hotkeys.
+The plugin has four commands (Command palette, Ctrl/Cmd+P) and a sidebar icon. Three commands and the icon start the add flow above; “Sort links in current note” sorts each block of link lines in the open note (see “Sorting links” below). Each command can be given a hotkey in Settings → Hotkeys.
 
 | Entry point | Where the link comes from | Note it checks and writes to | Available when |
 | --- | --- | --- | --- |
 | Add link to target note | Typed or pasted into a dialog | Target note from settings | Always |
 | Add link to current note | Typed or pasted into a dialog | The note open right now | A Markdown note is open |
 | Add selected link to target note | Text selected in the editor | Target note from settings | Text is selected |
-| Sort links in current note | No link is given: it sorts the links already in the note | The note open in the editor | A Markdown note is open in the editor |
+| Sort links in current note | No link is given: it sorts each block of link lines already in the note | The note open in the editor | A Markdown note is open in the editor |
 | Ribbon icon (link symbol) | Typed or pasted into a dialog | Target note from settings | Always |
 
 **The dialog:**
@@ -102,82 +103,82 @@ A new link always goes on its own line at the very end of the note. Nothing else
 
 ## Sorting links
 
-“Sort links in current note” puts the link lines of the note open in the editor in order. It is a separate command: adding a link never sorts, and a new link still goes at the end of the note.
+“Sort links in current note” reads the note open in the editor from top to bottom and sorts each block of link lines on its own. Every other line stays where it is. It is a separate command: adding a link never sorts, and a new link still goes at the end of the note.
 
-**Which lines move**
+**Rules**
 
-A link line is a line with a web address (`http://…`, `https://…`) or a note link (`[[…]]`). Only link lines move. Every other line keeps its exact place. The link lines fill the places where link lines were, in sorted order, so a link can move to another part of the note.
+1. **Link line:** a line with one web link and nothing else. In this order:
+   - optional spaces or tabs;
+   - an optional list marker (`-`, `*`, `+`, or a number with `.` or `)`), then one or more spaces or tabs;
+   - only after a list marker: an optional task box (`[ ]`, `[x]`, `[X]`), then one or more spaces or tabs;
+   - exactly one web link (`http://` or `https://`; capital letters count, as in `HTTPS://`);
+   - nothing else, apart from spaces or tabs at the end.
 
-There are two kinds of link lines, and each kind is sorted apart:
+   | Line | Link line? |
+   | --- | --- |
+   | `https://github.com/dekey/link-keeper` | yes |
+   | `- https://github.com/dekey/link-keeper/pull/2` | yes |
+   | `12. https://a.com/x` | yes |
+   | `+ https://a.com/x` | yes |
+   | a tab, then `- [ ]  https://a.com/x` | yes (indent, task box, two spaces) |
+   | `- [X] https://a.com/x` | yes |
+   | `-   https://a.com/x` | yes (several spaces after the marker) |
+   | `-`, a tab, then `https://a.com/x` | yes (a tab after the marker) |
+   | `HTTPS://A.COM/x` | yes (capital letters) |
+   | `-https://a.com/x` | no (no space after the marker) |
+   | `*https://a.com/x*` | no (no space after the `*`: italic text) |
+   | `- [ ]https://a.com/x` | no (no space after the task box) |
+   | `See https://a.com/x` | no (text before) |
+   | `- https://a.com/x nice` | no (text after) |
+   | `- https://a.com/x https://b.com/y` | no (two links) |
+   | `- [title](https://a.com/x)` | no (Markdown link) |
+   | `- [[Note]]` | no (note link) |
+   | `> https://a.com/x`, `# https://a.com/x` | no (quote, heading) |
+   | `- 2. https://a.com/x` | no (two list markers) |
+   | `[ ] https://a.com/x` | no (task box without a list marker) |
+   | `- [-] https://a.com/x` | no (only `[ ]`, `[x]`, `[X]` count as a task box) |
+   | `- <https://a.com/x>` | no (link in angle brackets) |
 
-- List-item link lines: the line starts with a list marker (`- `, `* `, `+ `, `1. `, `1) `), so a task (`- [ ]`) is one too. Spaces and tabs before the marker do not count.
-- Plain link lines: all other link lines, like `Source: [[Note]]` or `https://example.com`.
+2. **Block:** one or more link lines right under each other. Any other line ends a block: a blank line, text, a heading, a line with a link and text. A block also ends where a line with a list marker follows a line without one, or the other way round (`https://a.com/z` then `- https://a.com/a` are two blocks). So a task box never lands on a line without a list marker.
+3. **Sort:** each block on its own, by the sort key of its link (see “Sort key” and “Order” below). Lines with the same key keep their old order, so sorting a second time changes nothing.
+4. **What moves:** each place keeps its start (the spaces or tabs and the list marker with the spaces after it) and its end (spaces or tabs at the line end, so a line break made with two spaces stays on its line). Only the task box and the link move. So a numbered list keeps its numbers 1, 2, 3, a bullet stays a bullet, each indent stays, and a task box moves with its link. Each line keeps its own line break, so Windows line breaks (CRLF) and a missing line break at the end stay as they were; an invisible byte order mark stays at the very start. The sort does not remove duplicates and does not change the text that moves.
+5. **Never touched:**
+   - the frontmatter, as Obsidian reads it: a `---` first line up to the next line that is exactly `---` (a `...` line does not end it). A `---` first line with no closing `---` is not frontmatter: it is a normal line, and the link lines below it are sorted;
+   - fenced code blocks: from a line that starts with 3 or more `` ` `` or `~` (after optional spaces or tabs and list markers, as in ```` - ``` ```` and ```` - 1. ``` ````) to a line with only the same character, at least as many (spaces or tabs before or after them are fine; other blank-looking characters, such as a no-break space, are not). A backtick fence has no backtick after it on the same line, so ```` ```a``` text ```` is inline code, not a fence. A code block that is never closed runs to the end of the note.
 
-List-item link lines only fill the places where list-item link lines were, and plain link lines only fill the places where plain link lines were. Both kinds use the same sort key and order. So a plain line never lands above a `---` line (where it would become an underlined heading) or right under a table (where it would become a table row), and the structure of the note does not change. A note with only list-item links (the default “Line format” `- {link}`) has one kind, so all its links sort together.
+   Lines inside them are not link lines and end a block.
+6. **Count:** *n* in “✅ Sorted *n* links” is the number of all link lines in the note: also blocks of one line and lines that did not move.
 
-How each kind moves: each place keeps the start of its line, and only the rest of the line moves. The sort key comes from the part that moves.
-
-- A list-item place keeps the spaces and tabs before the marker, the marker itself (`-`, `*`, `+`, `1.`, `1)`) and the spaces after it. The task box (`[ ]`, `[x]`), the link, its title and tags move together. So a numbered list keeps its numbers 1, 2, 3, a bullet list stays a bullet list, and each place keeps its indent, so the nesting of the list stays.
-- A plain place keeps the spaces and tabs at the start of its line. The text before the link (like `Source:`), the link and the text after it move together. So an indented line inside a list item stays inside that item, and a link that moves to the left edge (under a heading, at the top of the note) never brings an indent that would turn it into a code block.
-
-| Before | After |
-| --- | --- |
-| `1. [[Zen and the Art]]` | `1. [x] [[Atomic Habits]]` |
-| `2. [x] [[Atomic Habits]]` | `2. [[Deep Work]]` |
-| `   - [[Deep Work]]` | `   - [[Zen and the Art]]` |
-
-| Before | After |
-| --- | --- |
-| `- Dune` | `- Dune` |
-| `  https://example.com/dune` | `  https://a.com/alpha` |
-| `## Articles` | `## Articles` |
-| `https://a.com/alpha` | `https://example.com/dune` |
-
-These lines never move, even when they hold a link:
-
-- The frontmatter, as Obsidian reads it: the block at the very top that starts with a `---` line and ends at the next line that is exactly `---` (a `...` line does not end it). A `---` at the top with no closing `---` is a divider, not frontmatter, and so is a `---` line lower in the note.
-- Fenced code blocks: from a line that starts with 3 or more `` ` `` or `~` (also right after one or more list markers, as in ```` - ``` ```` or ```` - 1. ``` ````) to a line with only the same character, at least as many. A code block opened after a list marker belongs to that item, so it also ends where the item ends: before the first line that is not blank and is indented less than the item's text. A line like ```` ```a``` text ```` is inline code, not the start of a code block.
-- Comment blocks: an Obsidian comment from a line with an unpaired `%%` (a `%%` line, or a comment that starts after some text) to the next line with an unpaired `%%`; an HTML comment from a line where `<!--` starts and does not end to the next line with `-->` (a line like `--> <!--` ends the comment and opens a new one, so the block goes on). A comment that starts and ends in one line (`%%…%%`, `<!-- … -->`, also the empty `<!-->` and `<!--->`) is not a block.
-- Tables: a line that has a divider line (like `--- | ---` or `|---|`) under it, and the rows after it, also rows without a `|` at the start. The first line needs no `|`: `Links` over `|---|` is a table with one column. So a moved link with `|` in it (`[[Note|alias]]`) never lands above a divider and turns the two lines into a table. A table ends before the first blank line, the first divider line (`---`, `***`, `___`) or the first line that starts another block: a list item (`- `, `1. `), a heading, a quote or callout, a code block or a comment (also a one-line `<!-- … -->`).
-- Headings (`#` to `######`, then a space, a tab or the line end), table rows (start with `|`), quotes and callouts (start with `>`). A `#tag` line is not a heading, so its link moves. Lines that start with an HTML comment (`<!-- note --> https://…`) stay too: such a line ends a table or an underlined heading above it, and a link moved into its place would not.
-- Underlined headings: one or more lines of plain text with a `===` or `---` line right under them, also inside a list item, where the underline is indented like the item's text. A numbered line that does not start at 1 (`2. …`) is part of the text when it goes on with a text line right above it, or with the text of a list item it is indented into, as in Markdown; under a blank line or as the next item of a numbered list (`1. …`, then `2. …`) it is a list item. A list item is part of the heading when the underline is indented at least as far as the item's text (so the underline is inside the item). A line indented 4 or more columns past where the heading text starts is part of that text, also when it looks like `# …`, `- …` or `> …` (an indented code block cannot break a paragraph). As in Markdown, the underline may be indented at most 3 columns past where the heading text starts (the item's text, or else the first text line); indented 4 or more, it is plain text and the line above it is no heading. A `---` under a blank line, a table, a one-line comment, or a list item whose text starts further right is a divider, not an underline, so the link above it moves.
-- Footnote definitions (`[^1]: https://…`) and link reference definitions (`[a]: https://…`): lines that start with `[label]:`. So a footnote never moves into the body, and a body link never takes the place of a footnote.
-
-A code block or comment block that is never closed runs to the end of the note. Spaces and tabs at the start of a line are ignored for the code block, heading, table row, quote and definition checks.
-
-The sort does not remove duplicates and does not change the text that moves; it only puts it in another place. Each place keeps its own line break, so Windows line breaks (CRLF) and a missing line break at the end stay as they were.
-
-**Sort key**
-
-Each link line is sorted by the last part of its first link (the link that starts first in the line):
-
-- Web link: the text after the last `/`, without the query (`?…`), the anchor (`#…`), slashes at the end and punctuation stuck to the end (`. , ; : ! ?`), and Markdown bold, italic or strike-through marks glued to a bare link (`**https://…**`, `_…_`, `~~…~~`). `%` codes are turned back into letters; a broken one (`100%`) is kept as it is. A link with no path is sorted by its domain, `www.` included. In a Markdown link (`[title](address)`) the address counts, also when the title is a web address itself (`[https://b.com/zeta](https://a.com/alpha)` is sorted by `alpha`).
-- Note link: the note name, without folder and alias. A link to a heading in the same note (`[[#Heading]]`) is sorted by the whole heading text, also when it holds a `/`.
-
-| Line | Sorted by |
-| --- | --- |
-| `- https://a.com/docs/page?id=2` | `page` |
-| `- https://a.com/docs/` | `docs` |
-| `- https://www.a.com/` | `www.a.com` |
-| `- [Zebra](https://c.com/blog/Alpha)` | `Alpha` |
-| `- https://en.wikipedia.org/wiki/Mercury_(planet)` | `Mercury_(planet)` |
-| `- https://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0` | `Москва` |
-| `- [[Folder/My Note\|alias]]` | `My Note` |
-| `- [[Note#Heading]]` | `Note` |
-| `- [[#Heading]]` | `Heading` |
-| `- [[Other]] https://a.com/x` | `Other` |
-
-**Order**
-
-Punctuation first, then digits, then letters. Numbers are compared by value, so `2-tips` comes before `10-tips`. Capital letters and accents do not count (`alpha` = `Alpha`, `éclair` = `eclair`). Other scripts, like Cyrillic, come after Latin letters. Lines with the same key keep their old order, so sorting a second time changes nothing.
+**Example**
 
 | Before | After |
 | --- | --- |
 | `# Reading` | `# Reading` |
 | `- https://b.com/zeta` | `- https://a.com/2-intro` |
+| `- https://a.com/2-intro` | `- https://b.com/zeta` |
 | `Some text` | `Some text` |
-| `- https://a.com/2-intro` | `- [Alpha](https://c.com/docs/alpha/)` |
-| `- [Alpha](https://c.com/docs/alpha/)` | `- https://b.com/zeta` |
+| `1. https://github.com/dekey/link-keeper` | `1. [ ] https://github.com/dekey/link-keeper/pull/2` |
+| `2. [ ] https://github.com/dekey/link-keeper/pull/2` | `2. https://github.com/dekey/link-keeper` |
+
+`Some text` splits the note into two blocks, and each is sorted on its own. The numbers 1 and 2 stay; the task box moves with its link. The key `2` comes before `link-keeper`. The pop-up says “✅ Sorted 4 links”.
+
+**Sort key**
+
+The key is the text after the last `/` of the link, without the query (`?…`) and the anchor (`#…`), and then without the slashes and punctuation (`. , ; : !`) at its end, so `https://a.com/docs.?x=1` is sorted by `docs`. `%` codes are turned back into letters. If the key has a broken one (as in `100%`), no code in it is turned back: the key stays as it is. A link with no path is sorted by its domain, `www.` included.
+
+| Link | Sorted by |
+| --- | --- |
+| `https://github.com/dekey/link-keeper/pull/2` | `2` |
+| `https://github.com/dekey/link-keeper` | `link-keeper` |
+| `https://a.com/docs/page?id=2` | `page` |
+| `https://a.com/docs/` | `docs` |
+| `https://www.a.com/` | `www.a.com` |
+| `https://en.wikipedia.org/wiki/Mercury_(planet)` | `Mercury_(planet)` |
+| `https://ru.wikipedia.org/wiki/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0` | `Москва` |
+
+**Order**
+
+Punctuation first, then digits, then letters. Numbers are compared by value, so `2-tips` comes before `10-tips`. Capital letters and accents do not count (`alpha` = `Alpha`, `éclair` = `eclair`). Other scripts, like Cyrillic, come after Latin letters.
 
 **Writing and messages**
 
@@ -185,25 +186,18 @@ The command changes only the lines that change, in one step through the open edi
 
 | Situation | Message | Shown for | Note changed? |
 | --- | --- | --- | --- |
-| Lines moved | ✅ Sorted *n* links in “*note*” | 4 seconds | Yes, only the order of the links |
-| Already in order, or 0–1 link lines | Links in “*note*” are already in order | 4 seconds | No |
+| Lines moved | ✅ Sorted *n* links in “*note*” | 4 seconds | Yes, only the order of the links in each block |
+| Already in order, also with no link lines | Links in “*note*” are already in order | 4 seconds | No |
 | Something failed | Link Keeper: could not sort the links — see the developer console. | Default | No |
 
-*n* is the number of link lines in the note (both kinds), also the ones that did not move. *note* is the note name without `.md`.
+*n* is the count from rule 6. *note* is the note name without `.md`.
 
 **Known limits** (not fixed)
 
-- A link line inside a paragraph that is wrapped over several lines moves alone: the paragraph is split, and another link line can land in the middle of the sentence. Put a blank line before and after links that should be sorted.
-- Each link moves alone. A line under a link (a sub-item or a note) does not follow it. Each place keeps its indent, so the shape of the note stays, but a link from a sub-item or from an indented line inside a list item can move to a top place and the other way round.
-- Indented code blocks (4 spaces, no fence) are not found: the text of a link line inside one can move out, and another link can move in and show as code.
-- A link inside inline code (`` `https://…` ``) still counts as a link line.
-- Embeds count as links: `![[image.png]]` and `![](https://…/pic.png)` lines move like links.
-- A single `%%` anywhere in a line starts or ends a comment block: also inside inline code (`` `%%` ``), inside a link, in plain text like `100%%`, or inside the other kind of comment (`<!-- %% -->`). The same goes for `<!--`. The lines below it do not move until the next unpaired `%%` or `-->`, and the pop-up can say the links are already in order.
-- Math blocks (`$$`) and HTML blocks (like `<div>`) are not found; a link line inside one can move.
-- A line with only fence characters ends a code block even when it is indented by 4 or more spaces, where Markdown can still count it as code.
-- In Markdown, a text line right under a quote or callout, without `>` at its start, can still belong to it. Here it is a normal line, so its link can move.
-- In the same way, a text line right under a footnote definition (`[^1]: …`) can still belong to the footnote. Here it is a normal line, so its link can move out of the footnote and another plain link line can move in.
-- Markdown links to notes (`[Alpha](Alpha.md)`, used when “Use [[Wikilinks]]” is off) are not link lines: they stay in place while the other links are sorted around them.
+- A link with text around it, a note link (`[[Note]]`) or a Markdown link (`[title](https://…)`) is not a link line, so it is not sorted, and it ends a block.
+- A line under a link (a sub-item, a note) does not follow it: it stays in its place while the link moves inside its block.
+- In a nested list, the child link lines of a block mix with their parent's lines. Each place keeps its indent, so the shape of the list stays, but a link can move from a sub-item to a top item and the other way round.
+- Only the frontmatter and fenced code blocks are skipped. Link lines in comments (`%%`, `<!-- -->`), math (`$$`), HTML blocks and indented code (4 spaces) are sorted like any other, and a block can move a link into or out of indented code.
 - The command works only in the editor (editing view). Obsidian hides it in reading view and while you type in the note’s properties.
 
 ## Settings
@@ -236,7 +230,7 @@ Three settings live under Settings → Link Keeper. Changes save immediately and
 
 **Files:** the plugin is two files in `.obsidian/plugins/link-keeper/` — `manifest.json` (id `link-keeper`, version 0.1, minimum Obsidian 1.5.0) and `main.js`. Settings are stored by Obsidian in `data.json` in the same folder.
 
-**Source and build:** the code is TypeScript in `src/` (`links.ts` holds the duplicate and line rules with no Obsidian imports, so it is tested on its own). `make build` type-checks it, bundles it into `plugin/main.js` with Deno (no Node or npm) and copies `manifest.json` next to it. `make test` runs the tests in `tests/`. The `plugin/` folder is build output and is not kept in git.
+**Source and build:** the code is TypeScript in `src/` (`links.ts` holds the duplicate and line rules and `sort.ts` the sort rules, both with no Obsidian imports, so they are tested on their own). `make build` type-checks it, bundles it into `plugin/main.js` with Deno (no Node or npm) and copies `manifest.json` next to it. `make test` runs the tests in `tests/`. The `plugin/` folder is build output and is not kept in git.
 
 **Releases:** GitHub Actions runs lint, build and tests on every push to `main` and every pull request; it does not publish releases. A release is made by hand: `scripts/release.sh <tag>` checks that the tag is the `version` in `manifest.json`, that the local Deno is the version CI uses, that `origin` is a GitHub repository (an https or SSH URL, an SSH host alias that points at github.com, or an `insteadOf` short name), that `gh` can see that repository, that the checked-out commit is the tag, that there are no uncommitted or untracked files, that the tag on GitHub is the same commit and that `gh` can reach the release (a missing release is fine). All `gh` calls go to the `origin` repository. Then it runs `make test zip` and uploads `main.js`, `manifest.json` and `link-keeper.zip` (unzips to `link-keeper/`) to the GitHub release for that tag. A failed check or test stops it before anything is published. If the tag already has a release, its three files are replaced (and its notes, when `docs/releases/<tag>.md` exists); the release is not deleted first, so a failed upload can be finished by running the script again. The tag stays.
 

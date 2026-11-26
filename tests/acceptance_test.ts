@@ -200,27 +200,35 @@ Deno.test("'Add link to current note' is hidden for a canvas, so the canvas file
 
 // "Sort links in current note": the note open in the editor (SPEC.md, "Sorting links").
 
-// The SPEC Before/After example: keys zeta, 2-intro, alpha.
+// The SPEC "Sorting links" Before/After example: two blocks split by a text line. Keys: zeta and
+// 2-intro in the first block; link-keeper and 2 in the second.
 const BEFORE = "# Reading\n" +
   "- https://b.com/zeta\n" +
-  "Some text\n" +
   "- https://a.com/2-intro\n" +
-  "- [Alpha](https://c.com/docs/alpha/)\n";
+  "Some text\n" +
+  "1. https://github.com/dekey/link-keeper\n" +
+  "2. [ ] https://github.com/dekey/link-keeper/pull/2\n";
 const AFTER = "# Reading\n" +
   "- https://a.com/2-intro\n" +
+  "- https://b.com/zeta\n" +
   "Some text\n" +
-  "- [Alpha](https://c.com/docs/alpha/)\n" +
-  "- https://b.com/zeta\n";
+  "1. [ ] https://github.com/dekey/link-keeper/pull/2\n" +
+  "2. https://github.com/dekey/link-keeper\n";
 
-/** The editor changes that turn BEFORE into AFTER: lines 1, 3 and 4 change, the others stay. */
+/** The editor changes that turn BEFORE into AFTER: lines 1, 2, 4 and 5 change, the others stay. */
 const SORT_CHANGES = [
   { from: { line: 1, ch: 0 }, to: { line: 1, ch: 20 }, text: "- https://a.com/2-intro" },
+  { from: { line: 2, ch: 0 }, to: { line: 2, ch: 23 }, text: "- https://b.com/zeta" },
   {
-    from: { line: 3, ch: 0 },
-    to: { line: 3, ch: 23 },
-    text: "- [Alpha](https://c.com/docs/alpha/)",
+    from: { line: 4, ch: 0 },
+    to: { line: 4, ch: 39 },
+    text: "1. [ ] https://github.com/dekey/link-keeper/pull/2",
   },
-  { from: { line: 4, ch: 0 }, to: { line: 4, ch: 36 }, text: "- https://b.com/zeta" },
+  {
+    from: { line: 5, ch: 0 },
+    to: { line: 5, ch: 50 },
+    text: "2. https://github.com/dekey/link-keeper",
+  },
 ];
 
 /** The one editor step of a sort: the changes, named by the plugin so undo keeps it apart. */
@@ -242,7 +250,7 @@ async function withConsoleErrors<T>(
   }
 }
 
-Deno.test("sorting puts the link lines of the editor text in order in one editor step that changes only the moved lines, unsaved edits included, and says how many links were sorted", async () => {
+Deno.test("sorting puts each block of link lines of the editor text in order in one editor step that changes only the moved lines, unsaved edits included, and says how many links were sorted", async () => {
   // The saved note is older than the editor text: the sort must use the editor text.
   const saved = "# Reading\n- https://b.com/zeta\n- https://a.com/alpha\n";
   const vault = await Harness.start({ notes: { "Daily/Reading.md": saved } });
@@ -251,20 +259,21 @@ Deno.test("sorting puts the link lines of the editor text in order in one editor
 
   assertEquals(editor.getValue(), AFTER);
   assertEquals(editor.transactions, [SORT_STEP]);
-  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+  assertEquals(vault.notices, [{ message: "✅ Sorted 4 links in “Reading”", duration: 4000 }]);
 });
 
-Deno.test("the sort pop-up counts every link line, also the ones that did not move", async () => {
-  const text = "- https://x.com/zeta\n- https://x.com/beta\n- https://x.com/alpha\n";
+Deno.test("the sort pop-up counts every link line, also the ones that did not move and blocks of one line", async () => {
+  const text =
+    "- https://x.com/zeta\n- https://x.com/beta\n- https://x.com/alpha\n\nhttps://y.com/solo\n";
   const vault = await Harness.start({ notes: { "Daily/Reading.md": text } });
 
   const editor = await vault.runInEditor(SORT, "Daily/Reading.md", text);
 
   assertEquals(
     editor.getValue(),
-    "- https://x.com/alpha\n- https://x.com/beta\n- https://x.com/zeta\n",
+    "- https://x.com/alpha\n- https://x.com/beta\n- https://x.com/zeta\n\nhttps://y.com/solo\n",
   );
-  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+  assertEquals(vault.notices, [{ message: "✅ Sorted 4 links in “Reading”", duration: 4000 }]);
 });
 
 Deno.test("after sorting, the cursor is back on the same line and character, also on a line that changed", async () => {
@@ -296,15 +305,16 @@ Deno.test("a cursor at the end of a link line that gets a shorter line stays on 
 Deno.test("a cursor past the new end of a shortened link line is moved back to its end, so the sort does not fail", async () => {
   const vault = await Harness.start({ notes: { "Daily/Reading.md": BEFORE } });
 
-  // Line 4 is "- [Alpha](https://c.com/docs/alpha/)" (36 characters); after the sort it is
-  // "- https://b.com/zeta" (20 characters), and the place 36 is past the end of the note.
+  // Line 5 is "2. [ ] https://github.com/dekey/link-keeper/pull/2" (50 characters); after the
+  // sort it is "2. https://github.com/dekey/link-keeper" (39 characters), and the place 50 is
+  // past the end of the note.
   const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE, {
-    cursor: { line: 4, ch: 36 },
+    cursor: { line: 5, ch: 50 },
   });
 
   assertEquals(editor.getValue(), AFTER);
-  assertEquals(editor.getCursor(), { line: 4, ch: 20 });
-  assertEquals(vault.notices, [{ message: "✅ Sorted 3 links in “Reading”", duration: 4000 }]);
+  assertEquals(editor.getCursor(), { line: 5, ch: 39 });
+  assertEquals(vault.notices, [{ message: "✅ Sorted 4 links in “Reading”", duration: 4000 }]);
 });
 
 Deno.test("sorting changes only the editor text, never the vault notes", async () => {

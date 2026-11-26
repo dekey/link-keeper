@@ -30,6 +30,15 @@ Deno.test("web link inside a Markdown link is a duplicate", () => {
   );
 });
 
+// The search must read every web address in the note, not stop after the first one.
+Deno.test("web link that is the second web address in the note is a duplicate", () => {
+  assertEquals(containsLink("- https://a.com/x\n- https://b.com/y\n", "https://b.com/y"), true);
+});
+
+Deno.test("web link with a capital-letter scheme in the note is a duplicate", () => {
+  assertEquals(containsLink("- HTTPS://example.com/page\n", "https://example.com/page"), true);
+});
+
 Deno.test("web link with a different query is a new link", () => {
   assertEquals(containsLink("- https://foo.dev/a?x=1\n", "https://foo.dev/a?x=2"), false);
 });

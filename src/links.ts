@@ -6,12 +6,16 @@ export const DEFAULT_LINE_FORMAT = "- {link}";
 // A web address runs from http(s):// to the next space, quote or bracket.
 // One level of round brackets inside it is kept, so ".../wiki/Foo_(bar)" stays whole,
 // while the closing bracket of "[title](https://…)" or "(see https://…)" is left out.
-// It has the `g` flag, so it remembers its last position: read it only with `match` or
-// `matchAll`, never with `exec` or `test`, or the next text is searched from the wrong place.
-export const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/gi;
+// It has no `g` flag: one `exec` finds one link, and no position is kept between calls, so any
+// code can share it.
+export const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/i;
+
+// A private copy of URL_RE with the `g` flag, so `match` returns every link in a text.
+// Read it only with `match`: `match` starts from the beginning and keeps no position.
+const ALL_URLS_RE = new RegExp(URL_RE.source, URL_RE.flags + "g");
 
 // Punctuation stuck to the end of a link in a sentence.
-export const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 /**
  * Makes "https://www.Site.com/page/" and "http://site.com/page" the same string.
@@ -40,7 +44,7 @@ export function containsLink(content: string, link: string): boolean {
   const trimmed = link.trim();
   if (isUrl(trimmed)) {
     const target = normalizeUrl(trimmed);
-    const found = content.match(URL_RE) ?? [];
+    const found = content.match(ALL_URLS_RE) ?? [];
     return found.some((url) => normalizeUrl(url) === target);
   }
   // Wiki links ([[Note]]) or any other text: plain match, ignoring capital letters.

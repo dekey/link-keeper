@@ -3,7 +3,6 @@
 # Needs Deno (https://deno.com). No Node or npm.
 
 OUT := plugin
-DIST := dist
 
 .PHONY: build check test lint fmt zip clean
 
@@ -26,13 +25,6 @@ lint:
 
 fmt:
 	deno fmt src/ tests/
-
-# Zip for a GitHub release: unzipping it in <vault>/.obsidian/plugins/ gives link-keeper/.
-zip: build
-	rm -rf $(DIST)
-	mkdir -p $(DIST)/link-keeper
-	cp $(OUT)/main.js $(OUT)/manifest.json $(DIST)/link-keeper/
-	cd $(DIST) && zip -rq link-keeper.zip link-keeper && rm -rf link-keeper
 
 clean:
 	rm -rf $(OUT) $(DIST)

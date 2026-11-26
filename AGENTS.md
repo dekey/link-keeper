@@ -2,7 +2,7 @@
 
 Obsidian plugin "Link Keeper": adds a link to a note only if the note does not have it yet. TypeScript, built and tested with Deno (CI uses Deno 2.9.8). There is no Node, npm or `package.json`; dependencies are in `deno.json` (`npm:obsidian`, `jsr:@std/assert`).
 
-- `SPEC.md` is the behaviour contract (commands, duplicate rules, append rules, pop-up texts, edge cases). Change it together with any behaviour change.
+- `SPEC.md` is the behaviour contract (commands, duplicate rules, append rules, sort rules, pop-up texts, edge cases). Change it together with any behaviour change.
 - `README.md` is the user guide (install, use, settings, development, releases).
 
 ## Important
@@ -25,10 +25,16 @@ Single test:
 ```sh
 # rule tests: import src/ directly, no build needed
 deno test tests/links_test.ts --filter "port"
+deno test tests/sort_test.ts --filter "fence"
 
 # acceptance tests: run the BUILT bundle, so build first or they test old code
 make build && deno test --allow-read=plugin/main.js --filter "AC2"
 ```
+
+## Code notes
+
+- `URL_RE` (`src/links.ts`) has no `g` flag, so any code can share it. `LINK_LINE_RE` (`src/sort.ts`) is built from its source and flags. To find all links, use a private copy with `g`, read only with `match` (as `ALL_URLS_RE` in `containsLink`).
+- The sort writes through `editor.transaction(..., "link-keeper.sort")`: one undo step, folded sections kept. The origin must not start with `input.type` or `delete`, or Obsidian merges the sort into the typing before it.
 
 ## Docs, plans, releases
 

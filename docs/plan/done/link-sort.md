@@ -1,5 +1,15 @@
 # Sort links in current note
 
+> **Replaced in part (2026-11-26):** the plan "Sort blocks of link lines"
+> (`link-sort-blocks.md`) replaces this plan's "which lines move" design (every line that holds
+> a web or note link, across the whole note, with the block rules in "Note sort"). Now each
+> block of link lines (one web link and nothing else on the line) is sorted on its own; note
+> links and Markdown links are not sorted. The order, the command, the pop-ups and the editor
+> write stay as written here. The web link key changed: step 1 is gone (`URL_RE` has no `g`
+> flag now, so there is no `FIRST_URL_RE` and no `g` warning), Markdown link titles and
+> emphasis marks are gone, and the query and anchor are cut before the punctuation and
+> slashes at the end. SPEC.md "Sorting links" is the current rule.
+
 ## Overview
 
 - New command **Sort links in current note**. It sorts the lines that hold a link in the
