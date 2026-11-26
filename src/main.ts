@@ -4,8 +4,7 @@ import { LinkInputModal } from "./modal.ts";
 import { DEFAULT_SETTINGS, type LinkKeeperSettings, LinkKeeperSettingTab } from "./settings.ts";
 import { lineChanges, sortLinkLines } from "./sort.ts";
 
-// Origin of the sort's editor change. Any name that does not start with "input.type" or
-// "delete" keeps the sort its own undo step.
+// Must not start with "input.type" or "delete", or undo merges the sort with typing.
 const SORT_ORIGIN = "link-keeper.sort";
 
 export default class LinkKeeperPlugin extends Plugin {
@@ -46,13 +45,12 @@ export default class LinkKeeperPlugin extends Plugin {
       },
     });
 
-    // 4) Sort the link lines of the note open in the editor.
+    // 4) Sort the link lines of the open note.
     this.addCommand({
       id: "sort-links-in-current-note",
       name: "Sort links in current note",
       editorCheckCallback: (checking, editor, ctx) => {
         const file = ctx.file;
-        // Hidden for a canvas or any other file that is not a Markdown note.
         if (!file || !isMarkdownNote(file.extension)) return false;
         if (!checking) this.sortLinks(editor, file);
         return true;
@@ -131,26 +129,19 @@ export default class LinkKeeperPlugin extends Plugin {
     }
   }
 
-  // Writes through the editor, not vault.process, so Ctrl/Cmd+Z can undo the sort.
+  // Through the editor, not vault.process, so Ctrl/Cmd+Z undoes it.
   private sortLinks(editor: Editor, file: TFile): void {
     try {
       const before = editor.getValue();
       const result = sortLinkLines(before);
       if (!result.changed) {
-        // No write when nothing moves: no undo step, and the note is not marked as changed.
         new Notice(`Links in “${file.basename}” are already in order`, 4000);
         return;
       }
       const cursor = editor.getCursor();
-      // Only the lines that changed are replaced, all in one transaction, so it is one undo
-      // step and the rest of the note (folded sections) is not touched. setValue would replace
-      // the whole note. The origin names the change: without one, Obsidian's undo history can
-      // merge the sort into typing done just before it, and one Ctrl/Cmd+Z would undo both.
+      // Changed lines only, in one transaction: one undo step, folds kept.
       editor.transaction({ changes: lineChanges(before, result.content) }, SORT_ORIGIN);
-      // The sort keeps the number of lines, so the cursor's line still exists, but a changed
-      // line moves the cursor and may now be shorter. Obsidian does not stop the cursor at the
-      // line end (it lands on a later line, or fails past the end of the note), so put it back
-      // on its line and character, at most at the end of the line.
+      // A changed line moves the cursor: put it back, at most at the line end.
       const lineEnd = editor.getLine(cursor.line).length;
       editor.setCursor({ line: cursor.line, ch: Math.min(cursor.ch, lineEnd) });
       new Notice(`✅ Sorted ${result.links} links in “${file.basename}”`, 4000);

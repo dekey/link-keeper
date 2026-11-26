@@ -6,12 +6,10 @@ export const DEFAULT_LINE_FORMAT = "- {link}";
 // A web address runs from http(s):// to the next space, quote or bracket.
 // One level of round brackets inside it is kept, so ".../wiki/Foo_(bar)" stays whole,
 // while the closing bracket of "[title](https://…)" or "(see https://…)" is left out.
-// It has no `g` flag: one `exec` finds one link, and no position is kept between calls, so any
-// code can share it.
+// No `g` flag, so it keeps no position and any code can share it.
 export const URL_RE = /https?:\/\/(?:[^\s<>()\[\]"'`]|\([^\s<>()\[\]"'`]*\))+/i;
 
-// A private copy of URL_RE with the `g` flag, so `match` returns every link in a text.
-// Read it only with `match`: `match` starts from the beginning and keeps no position.
+// With `g`, for `match` only: finds every link.
 const ALL_URLS_RE = new RegExp(URL_RE.source, URL_RE.flags + "g");
 
 // Punctuation stuck to the end of a link in a sentence.
@@ -77,10 +75,7 @@ export function addLinkToContent(content: string, link: string, format: string):
   return { content: appendLine(content, formatLine(format, link)), added: true };
 }
 
-/**
- * Only Markdown notes are changed by the plugin (adding or sorting links); changing a canvas,
- * PDF or image as text breaks the file.
- */
+/** Only Markdown notes are changed: a canvas, PDF or image would break as text. */
 export function isMarkdownNote(extension: string): boolean {
   return extension === "md";
 }

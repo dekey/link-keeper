@@ -24,16 +24,14 @@ export interface EditorOptions {
   failOnWrite?: boolean;
 }
 
-/** One change of an editor transaction: replace the text from `from` to `to` with `text`. */
 export interface EditorChange {
   from: EditorPosition;
   to?: EditorPosition;
   text: string;
 }
 
-/** Stand-in for Obsidian's Editor: the text of the open note, the cursor and the selection. */
 export class FakeEditor {
-  /** Every transaction: its changes and its origin, in order (the length is the number of them). */
+  /** Every transaction, in order. */
   readonly transactions: { changes: EditorChange[]; origin: string | undefined }[] = [];
   private text: string;
   private cursor: EditorPosition;
@@ -55,11 +53,7 @@ export class FakeEditor {
     return this.text;
   }
 
-  /**
-   * Applies all changes in one step. Like Obsidian, every position refers to the text before
-   * the transaction. A cursor on a changed line does not stay where it was: here it goes to the
-   * start of that line, so a test sees whether the plugin puts it back.
-   */
+  /** Positions refer to the text before. A cursor on a changed line goes to ch 0. */
   transaction(tx: { changes?: EditorChange[] }, origin?: string): void {
     const changes = tx.changes ?? [];
     this.transactions.push({ changes, origin });
@@ -69,7 +63,7 @@ export class FakeEditor {
       to: this.offset(change.to ?? change.from),
       text: change.text,
     }));
-    // From the end of the text backwards, so a change does not shift the ones before it.
+    // Backwards, so a change does not shift the ones before it.
     ranges.sort((a, b) => b.from - a.from);
     for (const { from, to, text } of ranges) {
       this.text = this.text.slice(0, from) + text + this.text.slice(to);
@@ -79,7 +73,6 @@ export class FakeEditor {
     }
   }
 
-  /** Offset of a position in the text (positions past the line end are not checked here). */
   private offset(position: EditorPosition): number {
     const lines = this.text.split("\n");
     let offset = position.ch;
@@ -96,11 +89,7 @@ export class FakeEditor {
     return { ...this.cursor };
   }
 
-  /**
-   * Takes a position (the plugin uses only this form of the real setCursor). Like Obsidian, it
-   * does not stop `ch` at the line end: it counts `ch` from the line start, so a `ch` past the
-   * line end lands on a later line, and past the end of the note it throws.
-   */
+  /** Like Obsidian, `ch` is not stopped at the line end; past the note end it throws. */
   setCursor(target: EditorPosition): void {
     const lines = this.text.split("\n");
     let offset = target.ch;
@@ -467,11 +456,7 @@ export class Harness {
     await settle();
   }
 
-  /**
-   * Opens `text` in an editor for the note at `path` and runs an editor command, the way the
-   * command palette does: only when the command shows for that note. Returns the editor, so the
-   * test can read its text and cursor afterwards. The vault note is not touched by this.
-   */
+  /** Runs an editor command on `text` if it shows for `path`; returns the editor. */
   async runInEditor(
     commandId: string,
     path: string,

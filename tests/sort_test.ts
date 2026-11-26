@@ -23,7 +23,6 @@ Deno.test("web link key ignores a full stop stuck to the end of the link", () =>
   assertEquals(linkLine("- https://a.com/docs/.")?.key, "docs");
 });
 
-// The query and the anchor are cut first, so punctuation and slashes in front of them go too.
 Deno.test("web link key drops the punctuation and slashes in front of the query or the anchor", () => {
   assertEquals(linkLine("- https://a.com/docs.?x=1")?.key, "docs");
   assertEquals(linkLine("- https://a.com/docs/.#top")?.key, "docs");
@@ -52,8 +51,6 @@ Deno.test("web link key turns percent codes back into letters", () => {
   );
 });
 
-// The steps run in a fixed order: the anchor and the query are cut before the last part is
-// taken, so a "/" in them does not change the key.
 Deno.test("a / in the anchor does not change the key: the anchor is cut first", () => {
   assertEquals(linkLine("- https://app.com/#/settings")?.key, "app.com");
 });
@@ -66,8 +63,7 @@ Deno.test("broken percent code keeps the key text as it is", () => {
   assertEquals(linkLine("- https://a.com/100%")?.key, "100%");
 });
 
-// linkLine reads the line with a pattern built from URL_RE and its flags. If URL_RE got the `g`
-// flag, the second call would start after the first (longer) line and miss the link.
+// Guards against URL_RE getting the `g` flag back.
 Deno.test("each line is read on its own: a long link line before does not hide the next link", () => {
   assertEquals(linkLine("- https://a.com/very/long/path/to/zeta")?.key, "zeta");
   assertEquals(linkLine("- https://b.com/alpha")?.key, "alpha");
@@ -161,12 +157,10 @@ Deno.test("each block of link lines is sorted on its own while other lines keep 
   assertEquals(sortLinkLines(before), { content: after, links: 4, changed: true });
 });
 
-// --- Rule 1: a link line is one web link, with only spaces, a list marker and a task box
-// before it ---
+// --- Rule 1: a link line ---
 
 Deno.test("only a line with one web link and nothing else but a list marker and a task box before it is sorted", () => {
-  // Each line goes over a line of the same shape whose link sorts first ("…/0"). A link line
-  // moves down below it; any other line is not sorted, so the note stays as it is.
+  // Each row sits under a "…/0" line: only a link line moves below it.
   const rows: [line: string, first: string, isLinkLine: boolean][] = [
     ["https://github.com/dekey/link-keeper", "https://a.com/0", true],
     ["- https://github.com/dekey/link-keeper/pull/2", "- https://a.com/0", true],
@@ -329,8 +323,7 @@ Deno.test("a numbered list keeps its numbers 1, 2, 3 in order, only the links mo
   assertEquals(sortLinkLines(before), { content: after, links: 3, changed: true });
 });
 
-// The child lines are in the same block as their parents, so their links mix (a known limit),
-// but each place keeps its indent, so the shape of the list stays.
+// Child links mix with their parents (known limit), but the indents stay.
 Deno.test("each place keeps its indent, list marker and the spaces after it, also in a nested list", () => {
   const before = note(
     "1) https://x.com/projects",
@@ -395,13 +388,7 @@ Deno.test("a byte order mark stays at the start of the note when the first link 
 
 // --- Rule 5: the frontmatter and fenced code blocks are never touched ---
 
-/**
- * Checks that the sort does not touch `part` (frontmatter or a code block) and sorts the block
- * right under it. `part` holds the out-of-order link lines "- https://x.com/zeta" and
- * "- https://x.com/alpha": if the part is not skipped, they get sorted; if the part does not
- * end where it should, it takes in the block under it, and that block is not sorted. Both give
- * another note text.
- */
+/** `part` stays as it is and the block under it is sorted. */
 function assertPartStays(...part: string[]): void {
   const before = note(...part, "- https://y.com/beta", "- https://y.com/alpha", "");
   const after = note(...part, "- https://y.com/alpha", "- https://y.com/beta", "");
@@ -505,8 +492,6 @@ Deno.test("a --- line below the top is a divider, not frontmatter", () => {
   assertEquals(sortLinkLines(before), { content: after, links: 2, changed: true });
 });
 
-// Lines inside a code block are not link lines, so the link lines above and below it are two
-// blocks: no link moves across the code block.
 Deno.test("a code block between two link lines ends the block, so no link moves across it", () => {
   for (const fence of ["```", "~~~"]) {
     const before = note("- https://a.com/zeta", fence, "code", fence, "- https://a.com/alpha", "");

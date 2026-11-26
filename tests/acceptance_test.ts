@@ -1,6 +1,4 @@
-// One test per acceptance criterion in docs/plan/done/v0.1.md, plus the "Sort links in current
-// note" command (SPEC.md, "Sorting links"), run against the built plugin/main.js inside
-// a fake vault (see fake_obsidian.ts).
+// Acceptance tests: run the built plugin/main.js in a fake vault (fake_obsidian.ts).
 
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { Harness } from "./fake_obsidian.ts";
@@ -198,10 +196,9 @@ Deno.test("'Add link to current note' is hidden for a canvas, so the canvas file
   assertEquals(vault.isAvailable(TO_CURRENT), false);
 });
 
-// "Sort links in current note": the note open in the editor (SPEC.md, "Sorting links").
+// --- Sort links in current note ---
 
-// The SPEC "Sorting links" Before/After example: two blocks split by a text line. Keys: zeta and
-// 2-intro in the first block; link-keeper and 2 in the second.
+// The SPEC "Sorting links" example.
 const BEFORE = "# Reading\n" +
   "- https://b.com/zeta\n" +
   "- https://a.com/2-intro\n" +
@@ -215,7 +212,7 @@ const AFTER = "# Reading\n" +
   "1. [ ] https://github.com/dekey/link-keeper/pull/2\n" +
   "2. https://github.com/dekey/link-keeper\n";
 
-/** The editor changes that turn BEFORE into AFTER: lines 1, 2, 4 and 5 change, the others stay. */
+/** Lines 1, 2, 4 and 5 change. */
 const SORT_CHANGES = [
   { from: { line: 1, ch: 0 }, to: { line: 1, ch: 20 }, text: "- https://a.com/2-intro" },
   { from: { line: 2, ch: 0 }, to: { line: 2, ch: 23 }, text: "- https://b.com/zeta" },
@@ -231,10 +228,9 @@ const SORT_CHANGES = [
   },
 ];
 
-/** The one editor step of a sort: the changes, named by the plugin so undo keeps it apart. */
 const SORT_STEP = { changes: SORT_CHANGES, origin: "link-keeper.sort" };
 
-/** Runs `run` with console.error replaced, and returns the arguments of every call. */
+/** Runs `run` and returns the console.error calls. */
 async function withConsoleErrors<T>(
   run: () => Promise<T>,
 ): Promise<{ result: T; errors: unknown[][] }> {
@@ -305,9 +301,7 @@ Deno.test("a cursor at the end of a link line that gets a shorter line stays on 
 Deno.test("a cursor past the new end of a shortened link line is moved back to its end, so the sort does not fail", async () => {
   const vault = await Harness.start({ notes: { "Daily/Reading.md": BEFORE } });
 
-  // Line 5 is "2. [ ] https://github.com/dekey/link-keeper/pull/2" (50 characters); after the
-  // sort it is "2. https://github.com/dekey/link-keeper" (39 characters), and the place 50 is
-  // past the end of the note.
+  // Line 5 is 50 characters before the sort and 39 after.
   const editor = await vault.runInEditor(SORT, "Daily/Reading.md", BEFORE, {
     cursor: { line: 5, ch: 50 },
   });
