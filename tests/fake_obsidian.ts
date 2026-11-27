@@ -104,6 +104,18 @@ export class FakeEditor {
   }
 }
 
+/** An open note: `source` is editing view, `preview` is reading view. */
+class FakeMarkdownView {
+  constructor(
+    readonly file: FakeFile,
+    readonly editor: FakeEditor,
+    private readonly mode: "source" | "preview",
+  ) {}
+  getMode(): "source" | "preview" {
+    return this.mode;
+  }
+}
+
 /** What Obsidian passes to an editor command as `ctx`; only `file` is used here. */
 interface EditorContext {
   file: FakeFile | null;
@@ -300,11 +312,21 @@ export class FakeVault {
     return Promise.resolve(this.fileFor(path));
   }
 
+  read(file: FakeFile): Promise<string> {
+    const current = this.notes.get(file.path);
+    if (current === undefined) return Promise.reject(new Error(`No file "${file.path}".`));
+    return Promise.resolve(current);
+  }
+
+  /** Paths written by `process`, in order. */
+  readonly processed: string[] = [];
+
   process(file: FakeFile, change: (data: string) => string): Promise<string> {
     const current = this.notes.get(file.path);
     if (current === undefined) return Promise.reject(new Error(`No file "${file.path}".`));
     const next = change(current);
     this.notes.set(file.path, next);
+    this.processed.push(file.path);
     return Promise.resolve(next);
   }
 
@@ -332,7 +354,10 @@ export class FakeVault {
 
 interface FakeApp {
   vault: FakeVault;
-  workspace: { getActiveFile(): FakeFile | null };
+  workspace: {
+    getActiveFile(): FakeFile | null;
+    getActiveViewOfType(type: unknown): FakeMarkdownView | null;
+  };
 }
 
 export class FakePlugin {
@@ -408,9 +433,13 @@ export class Harness {
   readonly notices: NoticeRecord[] = [];
   readonly modals: FakeModal[] = [];
   activeFile: FakeFile | null = null;
+  activeView: FakeMarkdownView | null = null;
   readonly app: FakeApp = {
     vault: this.vault,
-    workspace: { getActiveFile: () => this.activeFile },
+    workspace: {
+      getActiveFile: () => this.activeFile,
+      getActiveViewOfType: (type) => (type === FakeMarkdownView ? this.activeView : null),
+    },
   };
   private plugin: FakePlugin | undefined;
 
@@ -456,23 +485,43 @@ export class Harness {
     await settle();
   }
 
-  /** Runs an editor command on `text` if it shows for `path`; returns the editor. */
-  async runInEditor(
+  /** Opens `path` in editing view with `text`, runs the command if it shows; returns the editor. */
+  runInEditor(
     commandId: string,
     path: string,
     text: string,
     options: EditorOptions = {},
   ): Promise<FakeEditor> {
+    return this.runInView(commandId, path, new FakeEditor(text, "", options), "source");
+  }
+
+  /** Opens `path` in reading view and runs the command if it shows; returns the view's editor. */
+  runInReadingView(commandId: string, path: string): Promise<FakeEditor> {
+    const editor = new FakeEditor(this.vault.notes.get(path) ?? "");
+    return this.runInView(commandId, path, editor, "preview");
+  }
+
+  private async runInView(
+    commandId: string,
+    path: string,
+    editor: FakeEditor,
+    mode: "source" | "preview",
+  ): Promise<FakeEditor> {
     const command = this.command(commandId);
-    if (!command.editorCheckCallback) throw new Error(`${commandId} is not an editor command`);
-    const editor = new FakeEditor(text, "", options);
-    const ctx = { file: this.vault.fileFor(path) };
-    if (command.editorCheckCallback(true, editor, ctx) !== true) {
+    if (!command.checkCallback) throw new Error(`${commandId} has no checkCallback`);
+    this.activeFile = this.vault.fileFor(path);
+    this.activeView = new FakeMarkdownView(this.activeFile, editor, mode);
+    if (command.checkCallback(true) !== true) {
       throw new Error(`${commandId} is hidden for "${path}"`);
     }
-    command.editorCheckCallback(false, editor, ctx);
+    command.checkCallback(false);
     await settle();
     return editor;
+  }
+
+  /** The command's name as the palette shows it after "Link Keeper: ". */
+  commandName(commandId: string): string {
+    return this.command(commandId).name;
   }
 
   /** Whether the command shows in the palette right now. */
@@ -569,6 +618,7 @@ export class Harness {
       Plugin: FakePlugin,
       PluginSettingTab: FakePluginSettingTab,
       Setting: FakeSetting,
+      MarkdownView: FakeMarkdownView,
       Modal,
       Notice,
       TFile: FakeFile,

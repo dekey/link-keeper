@@ -1,8 +1,8 @@
-import { type Editor, normalizePath, Notice, Plugin, TFile } from "obsidian";
+import { type Editor, MarkdownView, normalizePath, Notice, Plugin, TFile } from "obsidian";
 import { addLinkToContent, isMarkdownNote, isUrl, withMarkdownExtension } from "./links.ts";
 import { LinkInputModal } from "./modal.ts";
 import { DEFAULT_SETTINGS, type LinkKeeperSettings, LinkKeeperSettingTab } from "./settings.ts";
-import { lineChanges, sortLinkLines } from "./sort.ts";
+import { lineChanges, sortLinkLines, type SortResult } from "./sort.ts";
 
 // Must not start with "input.type" or "delete", or undo merges the sort with typing.
 const SORT_ORIGIN = "link-keeper.sort";
@@ -45,14 +45,14 @@ export default class LinkKeeperPlugin extends Plugin {
       },
     });
 
-    // 4) Sort the link lines of the open note.
+    // 4) Sort the link lines of the open note, in editing or reading view.
     this.addCommand({
       id: "sort-links-in-current-note",
-      name: "Sort links in current note",
-      editorCheckCallback: (checking, editor, ctx) => {
-        const file = ctx.file;
+      name: "Sort Current",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
         if (!file || !isMarkdownNote(file.extension)) return false;
-        if (!checking) this.sortLinks(editor, file);
+        if (!checking) void this.sortLinks(file);
         return true;
       },
     });
@@ -129,25 +129,44 @@ export default class LinkKeeperPlugin extends Plugin {
     }
   }
 
-  // Through the editor, not vault.process, so Ctrl/Cmd+Z undoes it.
-  private sortLinks(editor: Editor, file: TFile): void {
+  private async sortLinks(file: TFile): Promise<void> {
     try {
-      const before = editor.getValue();
-      const result = sortLinkLines(before);
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      const editor = view?.file === file && view.getMode() === "source" ? view.editor : null;
+      const result = editor ? this.sortInEditor(editor) : await this.sortInFile(file);
       if (!result.changed) {
         new Notice(`Links in “${file.basename}” are already in order`, 4000);
         return;
       }
-      const cursor = editor.getCursor();
-      // Changed lines only, in one transaction: one undo step, folds kept.
-      editor.transaction({ changes: lineChanges(before, result.content) }, SORT_ORIGIN);
-      // A changed line moves the cursor: put it back, at most at the line end.
-      const lineEnd = editor.getLine(cursor.line).length;
-      editor.setCursor({ line: cursor.line, ch: Math.min(cursor.ch, lineEnd) });
       new Notice(`✅ Sorted ${result.links} links in “${file.basename}”`, 4000);
     } catch (err) {
       console.error("Link Keeper:", err);
       new Notice("Link Keeper: could not sort the links — see the developer console.");
     }
+  }
+
+  // Editing view: through the editor, so Ctrl/Cmd+Z undoes it.
+  private sortInEditor(editor: Editor): SortResult {
+    const before = editor.getValue();
+    const result = sortLinkLines(before);
+    if (!result.changed) return result;
+    const cursor = editor.getCursor();
+    // Changed lines only, in one transaction: one undo step, folds kept.
+    editor.transaction({ changes: lineChanges(before, result.content) }, SORT_ORIGIN);
+    // A changed line moves the cursor: put it back, at most at the line end.
+    const lineEnd = editor.getLine(cursor.line).length;
+    editor.setCursor({ line: cursor.line, ch: Math.min(cursor.ch, lineEnd) });
+    return result;
+  }
+
+  // Reading view has no editor: write the file. An unchanged note is not written.
+  private async sortInFile(file: TFile): Promise<SortResult> {
+    let result = sortLinkLines(await this.app.vault.read(file));
+    if (!result.changed) return result;
+    await this.app.vault.process(file, (content) => {
+      result = sortLinkLines(content);
+      return result.content;
+    });
+    return result;
   }
 }
