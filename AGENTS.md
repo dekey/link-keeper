@@ -34,7 +34,7 @@ make build && deno test --allow-read=plugin/main.js --filter "AC2"
 ## Code notes
 
 - `URL_RE` (`src/links.ts`) has no `g` flag, so any code can share it. `LINK_LINE_RE` (`src/sort.ts`) is built from its source and flags. To find all links, use a private copy with `g`, read only with `match` (as `ALL_URLS_RE` in `containsLink`).
-- The sort writes through `editor.transaction(..., "link-keeper.sort")`: one undo step, folded sections kept. The origin must not start with `input.type` or `delete`, or Obsidian merges the sort into the typing before it.
+- In editing view the sort writes through `editor.transaction(..., "link-keeper.sort")`: one undo step, folded sections kept. The origin must not start with `input.type` or `delete`, or Obsidian merges the sort into the typing before it. In reading view it writes through `vault.process` (no editor there).
 
 ## Docs, plans, releases
 

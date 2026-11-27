@@ -35,14 +35,14 @@ Every add follows the same five steps:
 
 ## Commands and entry points
 
-The plugin has four commands (Command palette, Ctrl/Cmd+P) and a sidebar icon. Three commands and the icon start the add flow above; “Sort links in current note” sorts each block of link lines in the open note (see “Sorting links” below). Each command can be given a hotkey in Settings → Hotkeys.
+The plugin has four commands (Command palette, Ctrl/Cmd+P) and a sidebar icon. Three commands and the icon start the add flow above; “Sort Current” sorts each block of link lines in the open note (see “Sorting links” below). Each command can be given a hotkey in Settings → Hotkeys.
 
 | Entry point | Where the link comes from | Note it checks and writes to | Available when |
 | --- | --- | --- | --- |
 | Add link to target note | Typed or pasted into a dialog | Target note from settings | Always |
 | Add link to current note | Typed or pasted into a dialog | The note open right now | A Markdown note is open |
 | Add selected link to target note | Text selected in the editor | Target note from settings | Text is selected |
-| Sort links in current note | No link is given: it sorts each block of link lines already in the note | The note open in the editor | A Markdown note is open in the editor |
+| Sort Current | No link is given: it sorts each block of link lines already in the note | The note open right now | A Markdown note is open (editing or reading view) |
 | Ribbon icon (link symbol) | Typed or pasted into a dialog | Target note from settings | Always |
 
 **The dialog:**
@@ -103,7 +103,7 @@ A new link always goes on its own line at the very end of the note. Nothing else
 
 ## Sorting links
 
-“Sort links in current note” reads the note open in the editor from top to bottom and sorts each block of link lines on its own. Every other line stays where it is. It is a separate command: adding a link never sorts, and a new link still goes at the end of the note.
+“Sort Current” (in the palette: “Link Keeper: Sort Current”) reads the open note from top to bottom and sorts each block of link lines on its own. Every other line stays where it is. It is a separate command: adding a link never sorts, and a new link still goes at the end of the note.
 
 **Rules**
 
@@ -182,7 +182,7 @@ Punctuation first, then digits, then letters. Numbers are compared by value, so 
 
 **Writing and messages**
 
-The command changes only the lines that change, in one step through the open editor (Obsidian saves it as usual), so Ctrl/Cmd+Z undoes the whole sort at once and the rest of the note (folded sections) is not touched. The sort is its own undo step: Ctrl/Cmd+Z right after it undoes only the sort, not typing done just before it. It writes only when the order changes. The cursor stays on the same line number; that line may now hold another link, and when that line is shorter the cursor goes to its end. A selection is not kept: only the cursor comes back. After the sort the editor scrolls to the cursor, as Obsidian does for every editor change.
+In editing view, the command changes only the lines that change, in one step through the open editor (Obsidian saves it as usual), so Ctrl/Cmd+Z undoes the whole sort at once and the rest of the note (folded sections) is not touched. The sort is its own undo step: Ctrl/Cmd+Z right after it undoes only the sort, not typing done just before it. It writes only when the order changes. The cursor stays on the same line number; that line may now hold another link, and when that line is shorter the cursor goes to its end. A selection is not kept: only the cursor comes back. After the sort the editor scrolls to the cursor, as Obsidian does for every editor change. In reading view there is no editor: the command writes the note file in one step (as “Add link to current note” does), so Ctrl/Cmd+Z does not undo it there. In both views it writes only when the order changes.
 
 | Situation | Message | Shown for | Note changed? |
 | --- | --- | --- | --- |
@@ -198,7 +198,6 @@ The command changes only the lines that change, in one step through the open edi
 - A line under a link (a sub-item, a note) does not follow it: it stays in its place while the link moves inside its block.
 - In a nested list, the child link lines of a block mix with their parent's lines. Each place keeps its indent, so the shape of the list stays, but a link can move from a sub-item to a top item and the other way round.
 - Only the frontmatter and fenced code blocks are skipped. Link lines in comments (`%%`, `<!-- -->`), math (`$$`), HTML blocks and indented code (4 spaces) are sorted like any other, and a block can move a link into or out of indented code.
-- The command works only in the editor (editing view). Obsidian hides it in reading view and while you type in the note’s properties.
 
 ## Settings
 

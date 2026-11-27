@@ -10,7 +10,7 @@ the same link twice.
 - Finds a link anywhere in the note: in a list, in a sentence, or inside `[title](url)`.
 - `http`/`https`, `www.`, capital letters in the domain and a trailing `/` do not make a
   link "new".
-- **Sort links in current note** sorts each block of link lines in the open note (0–9, then
+- **Sort Current** sorts each block of link lines in the open note (0–9, then
   a–z, by the last part of the link); other lines stay. A link line holds one web link and
   nothing else (a list marker and a task box in front are fine); a block is link lines right
   under each other. Note links and `[title](url)` lines are not sorted.
@@ -128,7 +128,7 @@ left ribbon.
 | Add link to target note | Asks for a link and adds it to the target note (default `Links.md`). |
 | Add link to current note | Same, but checks and writes the note that is open now. Hidden when no Markdown note is open. |
 | Add selected link to target note | Adds the text selected in the editor. Hidden when nothing is selected. |
-| Sort links in current note | Sorts each block of link lines in the open note (0–9, then a–z, by the last part of the link); other lines stay. Ctrl/Cmd+Z undoes it. Hidden when no Markdown note is open in the editor. |
+| Sort Current | Sorts each block of link lines in the open note (0–9, then a–z, by the last part of the link); other lines stay. Works in editing and reading view; Ctrl/Cmd+Z undoes it in editing view. Hidden when no Markdown note is open. |
 
 You can give each command a hotkey in **Settings → Hotkeys**.
 
@@ -140,7 +140,7 @@ A new link goes on its own line at the end of the note. A pop-up tells you the r
 - ✅ Added to “Links” — the link was new and is now at the end of the note.
 - ⚠️ Already in “Links” — the link was there already; the note is not changed.
 
-After **Sort links in current note** a pop-up tells you:
+After **Sort Current** a pop-up tells you:
 
 - ✅ Sorted *n* links in “Note” — the links in each block are now in order; *n* counts all
   link lines in the note.

@@ -350,13 +350,53 @@ Deno.test("a note with no links is not rewritten and gets the 'already in order'
   ]);
 });
 
-Deno.test("'Sort links in current note' is hidden when the editor has no file", async () => {
+Deno.test("the sort command shows in the palette as 'Link Keeper: Sort Current'", async () => {
+  const vault = await Harness.start();
+
+  assertEquals(vault.commandName(SORT), "Sort Current");
+});
+
+Deno.test("'Sort Current' shows for a note open in reading view", async () => {
+  const vault = await Harness.start({
+    notes: { "Daily/Reading.md": BEFORE },
+    activeFile: "Daily/Reading.md",
+  });
+
+  assertEquals(vault.isAvailable(SORT), true);
+});
+
+Deno.test("in reading view the sort writes the sorted note to the file, not through the editor", async () => {
+  const links = "- https://b.com/zeta\n- https://a.com/alpha\n";
+  const vault = await Harness.start({ notes: { "Links.md": links, "Daily/Reading.md": BEFORE } });
+
+  const editor = await vault.runInReadingView(SORT, "Daily/Reading.md");
+
+  assertEquals(vault.note("Daily/Reading.md"), AFTER);
+  assertEquals(vault.vault.processed, ["Daily/Reading.md"]);
+  assertEquals(vault.note("Links.md"), links);
+  assertEquals(editor.transactions, []);
+  assertEquals(vault.notices, [{ message: "✅ Sorted 4 links in “Reading”", duration: 4000 }]);
+});
+
+Deno.test("in reading view an already sorted note is not written and the pop-up says the links are in order", async () => {
+  const vault = await Harness.start({ notes: { "Daily/Reading.md": AFTER } });
+
+  await vault.runInReadingView(SORT, "Daily/Reading.md");
+
+  assertEquals(vault.note("Daily/Reading.md"), AFTER);
+  assertEquals(vault.vault.processed, []);
+  assertEquals(vault.notices, [
+    { message: "Links in “Reading” are already in order", duration: 4000 },
+  ]);
+});
+
+Deno.test("'Sort Current' is hidden when no note is open", async () => {
   const vault = await Harness.start();
 
   assertEquals(vault.isAvailable(SORT), false);
 });
 
-Deno.test("'Sort links in current note' is hidden for a canvas", async () => {
+Deno.test("'Sort Current' is hidden for a canvas", async () => {
   const vault = await Harness.start({
     notes: { "Board.canvas": '{"nodes":[],"edges":[]}' },
     activeFile: "Board.canvas",

@@ -78,7 +78,7 @@ function skippedLines(texts: string[]): boolean[] {
   });
 }
 
-interface SortResult {
+export interface SortResult {
   content: string;
   links: number;
   changed: boolean;
